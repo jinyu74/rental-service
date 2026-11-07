@@ -26,5 +26,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - GitHub 는 무료 플랜이라 머지를 서버에서 막지 않는다. 머지 전에 CI 결과를 반드시 확인하고, CI 가 실패한 PR 은 머지하지 않는다.
 - `main` 으로 가는 PR 은 `develop` 또는 `hotfix/*` 에서만 (CI `source-branch` 가 검사).
 - 운영 배포는 Netlify 무료 크레딧(배포 1회 15크레딧)을 쓰므로 기능마다가 아니라 묶어서 release 한다.
+- 코드 리뷰: PR 을 만들면 herdr 옆 패널의 Codex 리뷰어(`rent-reviewer`, GPT-6.1-Sol medium, 읽기 전용)에게 리뷰를 요청한다.
+  리뷰어는 파일 수정·커밋·머지·승인을 하지 않고 발견사항과 `판정: 머지 가능|수정 필요` 만 낸다.
+  지적 사항을 반영하면 다시 리뷰를 요청한다. **최종 승인과 머지는 사용자가 한다.**
 - AI 에이전트는 사용자 승인 없이 PR 을 머지하지 않는다.
 - 패키지 관리는 pnpm. `.env*`(`.env.example` 제외)·서비스 계정 키는 커밋 금지.

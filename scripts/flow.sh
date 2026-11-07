@@ -21,7 +21,8 @@ case "$cmd" in
     clean
     base=develop; case "$name" in hotfix/*) base=main ;; esac
     git fetch -q origin
-    git switch -q "$base" && git pull -q --ff-only origin "$base"
+    git switch -q "$base"
+    git pull -q --ff-only origin "$base"
     git switch -c "$name"
     echo "✓ $base 에서 $name 생성. 작업·커밋 후: pnpm flow pr"
     ;;
@@ -49,11 +50,17 @@ case "$cmd" in
   sync)
     clean
     git fetch -q --prune origin
-    git switch -q develop && git pull -q --ff-only origin develop
-    git branch --merged develop | grep -E '^\s+(feature|fix|hotfix)/' | xargs -r git branch -d
-    # squash 머지로 원격에서 지워진 브랜치도 정리
-    git branch -vv | awk '/: gone]/{print $1}' | grep -E '^(feature|fix|hotfix)/' | xargs -r git branch -D
-    echo "✓ develop 최신화, 머지된 로컬 브랜치 정리 완료"
+    git switch -q develop
+    git pull -q --ff-only origin develop
+    # 병합이 확인된 브랜치만 삭제 (-d 는 미병합 브랜치를 지우지 않음)
+    git branch --merged develop | sed 's/^[* ]*//' | grep -E '^(feature|fix|hotfix)/' | xargs -r git branch -d
+    echo "✓ develop 최신화, 병합 확인된 로컬 브랜치 정리 완료"
+    # squash 머지 등으로 원격만 지워진 브랜치는 자동 삭제하지 않고 안내만 (로컬 커밋 보호)
+    gone=$(git branch -vv | sed 's/^[* ]*//' | awk '/: gone]/{print $1}' | grep -E '^(feature|fix|hotfix)/' || true)
+    if [ -n "$gone" ]; then
+      echo "ℹ 원격에서 삭제된 로컬 브랜치 (병합 내용을 확인한 뒤 직접 삭제: git branch -D <이름>):"
+      echo "$gone" | sed 's/^/  /'
+    fi
     ;;
   *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
