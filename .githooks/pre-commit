@@ -1,0 +1,11 @@
+#!/bin/sh
+# main·develop 에서 직접 커밋하지 않습니다. (머지 커밋은 GitHub PR 에서 생성)
+[ "$ALLOW_PROTECTED_PUSH" = "1" ] && exit 0
+branch=$(git branch --show-current)
+case "$branch" in
+  main|develop)
+    echo "✗ $branch 에서는 직접 커밋할 수 없습니다. 작업 브랜치를 만드세요:"
+    echo "  git stash && pnpm flow start <이름> && git stash pop"
+    exit 1 ;;
+esac
+exit 0

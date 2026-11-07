@@ -76,21 +76,22 @@ Netlify 배포 순서
 
 ## 브랜치 전략
 
+`develop` → 기능 브랜치 → PR(→ develop) → 개발 완료 → PR(develop → main) → 운영 배포.
+GitHub 무료 플랜이라 서버에서 강제되지 않으므로 로컬 훅과 CI, 아래 명령으로 지킵니다. 상세 규칙은 `AGENTS.md`.
+
 | 브랜치 | 역할 | 배포 |
 |---|---|---|
 | `main` | 운영 | Netlify Production (실제 시트) |
-| `develop` | 개발 통합 · 기본 브랜치 | Netlify 브랜치 배포 `develop--<이름>.netlify.app` (테스트 시트) |
-| `feature/*`, `fix/*` | 작업 | `develop` 으로 PR → Deploy Preview |
-| `hotfix/*` | 긴급 수정 | `main` 에서 분기 → `main` 으로 PR, 이후 `main` → `develop` 반영 |
-
-GitHub 규칙으로 강제됩니다: `main`·`develop` 직접 푸시·강제 푸시·삭제 금지, PR + CI(`build`) 통과 필수,
-`main` 은 `develop`·`hotfix/*` 에서 온 PR 만 허용(`source-branch` 검사). 자세한 규칙은 `AGENTS.md`.
+| `develop` | 개발 통합 · 기본 브랜치 | Netlify 브랜치 배포 (테스트 시트) |
+| `feature/*`, `fix/*` | 작업 | develop 으로 PR → Deploy Preview |
+| `hotfix/*` | 긴급 수정 | main 에서 분기 → main 으로 PR → main → develop 반영 |
 
 ```bash
-git switch develop && git pull
-git switch -c feature/수납-엑셀-내보내기
-# 작업 후
-git push -u origin HEAD && gh pr create --base develop
+pnpm flow start payment-export   # develop 최신화 + feature/payment-export 생성
+# … 작업·커밋 …
+pnpm flow pr                     # 푸시 + develop 으로 PR (CI 통과 후 머지)
+pnpm flow sync                   # develop 최신화, 머지된 브랜치 정리
+pnpm flow release                # 개발 완료 시 develop → main PR (Merge commit 으로 머지)
 ```
 
 ## 구조
