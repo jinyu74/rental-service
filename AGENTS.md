@@ -8,12 +8,23 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-## 브랜치 규칙 (필수)
+## 브랜치 규칙 (필수 — GitHub 서버 보호 없이 운영하므로 반드시 지킬 것)
 
-- `main`: 운영. Netlify Production 자동 배포. 직접 푸시 금지, PR 로만 머지.
-  - 받을 수 있는 PR: `develop`(정기 배포), `hotfix/*`(긴급 수정)만. CI `build` + `source-branch` 통과 필수.
-- `develop`: 개발 통합(기본 브랜치). Netlify 브랜치 배포(테스트 시트). 직접 푸시 금지, PR 로만 머지. CI `build` 통과 필수.
-- 작업 브랜치: `feature/*`, `fix/*` 는 `develop` 에서 만들어 `develop` 으로 PR.
-- `hotfix/*` 는 `main` 에서 만들어 `main` 으로 PR, 머지 후 `main` → `develop` 으로 반영 PR.
-- `develop` → `main` 은 Merge commit 으로 머지 (squash 하면 두 브랜치 이력이 어긋남).
-- 패키지 관리는 pnpm. `.env*`(예: `.env.example` 제외)·서비스 계정 키는 커밋 금지.
+흐름: `develop` → 기능 브랜치 → PR(→ develop) → 개발 완료 → PR(develop → main) → 운영 배포
+
+| 단계 | 명령 |
+|---|---|
+| 기능 시작 | `pnpm flow start <이름>` (develop 최신화 후 `feature/<이름>`; 버그는 `fix/<이름>`) |
+| 기능 PR | `pnpm flow pr` → CI `build` 통과 + Deploy Preview 확인 후 develop 에 머지(squash 가능) |
+| 정리 | `pnpm flow sync` |
+| 운영 배포 | `pnpm flow release` → develop → main PR, CI `build`·`source-branch` 통과 후 **Merge commit** 으로 머지 |
+| 긴급 수정 | `pnpm flow start hotfix/<이름>` → `pnpm flow pr`(→ main) → 머지 후 `pnpm flow backport`(main → develop) |
+
+- `main`(운영, Netlify Production)·`develop`(기본 브랜치, 개발 통합)에는 직접 커밋·푸시하지 않는다.
+  로컬 훅(`.githooks`)이 막는다: pre-commit(main·develop 커밋 금지), pre-push(main·develop 푸시 금지, 브랜치 이름은 feature/ fix/ hotfix/).
+  훅이 꺼져 있으면 `pnpm run prepare` (`git config core.hooksPath .githooks`).
+- GitHub 는 무료 플랜이라 머지를 서버에서 막지 않는다. 머지 전에 CI 결과를 반드시 확인하고, CI 가 실패한 PR 은 머지하지 않는다.
+- `main` 으로 가는 PR 은 `develop` 또는 `hotfix/*` 에서만 (CI `source-branch` 가 검사).
+- 운영 배포는 Netlify 무료 크레딧(배포 1회 15크레딧)을 쓰므로 기능마다가 아니라 묶어서 release 한다.
+- AI 에이전트는 사용자 승인 없이 PR 을 머지하지 않는다.
+- 패키지 관리는 pnpm. `.env*`(`.env.example` 제외)·서비스 계정 키는 커밋 금지.

@@ -1,12 +1,18 @@
 #!/bin/sh
-# main·develop 으로의 직접 푸시를 막습니다 (작업 브랜치에서 PR 로만 반영).
+# 1) main·develop 직접 푸시 금지  2) 작업 브랜치 이름은 feature/ fix/ hotfix/ 로 시작
 # 정말 필요할 때만: ALLOW_PROTECTED_PUSH=1 git push ...
 [ "$ALLOW_PROTECTED_PUSH" = "1" ] && exit 0
+zero=0000000000000000000000000000000000000000
 while read -r local_ref local_sha remote_ref remote_sha; do
-  case "$remote_ref" in
-    refs/heads/main|refs/heads/develop)
-      echo "✗ ${remote_ref#refs/heads/} 브랜치로 직접 푸시할 수 없습니다."
-      echo "  feature/* 또는 fix/* 브랜치를 만들어 develop 으로 PR 하세요 (긴급: hotfix/* → main)."
+  [ "$local_sha" = "$zero" ] && continue   # 원격 브랜치 삭제는 허용
+  b=${remote_ref#refs/heads/}
+  case "$b" in
+    main|develop)
+      echo "✗ $b 로 직접 푸시할 수 없습니다. 작업 브랜치에서 PR 하세요: pnpm flow pr"
+      exit 1 ;;
+    feature/*|fix/*|hotfix/*) ;;
+    *)
+      echo "✗ 브랜치 이름은 feature/ fix/ hotfix/ 로 시작해야 합니다 (현재: $b)."
       exit 1 ;;
   esac
 done
