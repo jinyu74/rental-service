@@ -1,0 +1,408 @@
+"use client"
+
+import { useState, useTransition, type FormEvent, type ReactNode } from "react"
+import { toast } from "sonner"
+import { deletePaymentAction, endContractAction, recordPaymentAction, saveContractAction } from "@/app/actions"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select"
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Textarea } from "@/components/ui/textarea"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { cn } from "@/lib/utils"
+import { roomName } from "@/lib/billing"
+import { digits, dotDate, monthNum, parseDate, won, ymd } from "@/lib/format"
+import type { ActionResult, ContractType } from "@/lib/types"
+import { useRent } from "./rent-app"
+
+/* ───────── 공통: 휴대폰은 아래 시트, PC 는 가운데 대화상자 ───────── */
+
+function FormShell({
+  title,
+  description,
+  wide,
+  onClose,
+  onSubmit,
+  pending,
+  error,
+  submitLabel,
+  destructive,
+  children,
+}: {
+  title: string
+  description?: ReactNode
+  wide?: boolean
+  onClose: () => void
+  onSubmit: () => void
+  pending: boolean
+  error: string | null
+  submitLabel: string
+  destructive?: boolean
+  children: ReactNode
+}) {
+  const { isMobile } = useRent()
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    onSubmit()
+  }
+  const body = (
+    <>
+      <div className="grid gap-4 sm:grid-cols-2">{children}</div>
+      {error && (
+        <p role="alert" className="mt-3 text-sm font-medium text-destructive">
+          {error}
+        </p>
+      )}
+    </>
+  )
+  const actions = (
+    <>
+      <Button type="button" variant="outline" size="lg" onClick={onClose}>
+        취소
+      </Button>
+      <Button type="submit" size="lg" variant={destructive ? "destructive" : "default"} disabled={pending}>
+        {pending ? "저장 중…" : submitLabel}
+      </Button>
+    </>
+  )
+  const onOpenChange = (open: boolean) => !open && !pending && onClose()
+
+  if (isMobile)
+    return (
+      <Sheet open onOpenChange={onOpenChange}>
+        <SheetContent side="bottom" className="gap-0 overflow-hidden rounded-t-2xl p-0 data-[side=bottom]:max-h-[92dvh]">
+          <form onSubmit={submit} noValidate className="flex min-h-0 flex-1 flex-col">
+            <SheetHeader className="border-b px-5 py-3">
+              <SheetTitle>{title}</SheetTitle>
+              {description && <SheetDescription>{description}</SheetDescription>}
+            </SheetHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">{body}</div>
+            <SheetFooter className="grid grid-cols-2 border-t px-5 pt-3 pb-[calc(env(safe-area-inset-bottom)+12px)]">{actions}</SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
+    )
+
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent className={cn("sm:max-w-md", wide && "sm:max-w-2xl")}>
+        <form onSubmit={submit} noValidate className="grid gap-4">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold">{title}</DialogTitle>
+            {description && <DialogDescription>{description}</DialogDescription>}
+          </DialogHeader>
+          <div>{body}</div>
+          <DialogFooter>{actions}</DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function Field({ label, htmlFor, full, children }: { label: string; htmlFor: string; full?: boolean; children: ReactNode }) {
+  return (
+    <div className={cn("grid gap-1.5", full && "sm:col-span-2")}>
+      <Label htmlFor={htmlFor} className="text-xs text-muted-foreground">
+        {label}
+      </Label>
+      {children}
+    </div>
+  )
+}
+
+function MoneyInput({ id, value, onChange }: { id: string; value: number | ""; onChange: (n: number | "") => void }) {
+  return (
+    <Input
+      id={id}
+      inputMode="numeric"
+      className="num h-10 text-right"
+      value={value === "" ? "" : value.toLocaleString("ko-KR")}
+      onChange={(e) => {
+        const n = digits(e.target.value)
+        onChange(e.target.value.trim() === "" ? "" : n)
+      }}
+    />
+  )
+}
+
+function Seg<T extends string>({ value, onChange, items, label }: { value: T; onChange: (v: T) => void; items: { v: T; label: string }[]; label: string }) {
+  return (
+    <ToggleGroup
+      aria-label={label}
+      value={[value]}
+      onValueChange={(v) => v[0] && onChange(v[0] as T)}
+      variant="outline"
+      spacing={0}
+      className="w-full"
+    >
+      {items.map((it) => (
+        <ToggleGroupItem
+          key={it.v}
+          value={it.v}
+          className="h-10 flex-1 data-pressed:border-primary data-pressed:bg-accent data-pressed:font-semibold data-pressed:text-accent-foreground"
+        >
+          {it.label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  )
+}
+
+function useSubmit(onClose: () => void) {
+  const [pending, start] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+  const run = (fn: () => Promise<ActionResult>) => {
+    setError(null)
+    start(async () => {
+      const r = await fn()
+      if (!r.ok) return setError(r.error)
+      toast.success(r.message)
+      onClose()
+    })
+  }
+  return { pending, error, setError, run }
+}
+
+/* ───────── 수납 기록 ───────── */
+
+export function PayDialog({ contractId, onClose }: { contractId?: string; onClose: () => void }) {
+  const { data, M, month } = useRent()
+  const billable = M.rooms.filter((r) => r.billing)
+  let target = contractId ? billable.find((r) => r.billing!.id === contractId) : undefined
+  target ??= billable.find((r) => r.bill!.st === "unpaid" || r.bill!.st === "partial") ?? billable.find((r) => r.bill!.st === "due") ?? billable[0]
+  const fallback = contractId ? data.contracts.find((c) => c.id === contractId) : undefined
+  const initial = target?.billing ?? fallback
+
+  const [cid, setCid] = useState(initial?.id ?? "")
+  const [m, setM] = useState(month)
+  const suggest = (id: string, mon: string) => {
+    const c = data.contracts.find((x) => x.id === id)
+    if (!c) return ""
+    const s = M.statusFor(c, mon)
+    return s.outstanding || s.billed
+  }
+  const [amount, setAmount] = useState<number | "">(() => suggest(initial?.id ?? "", month))
+  const [date, setDate] = useState(data.today)
+  const [method, setMethod] = useState("계좌이체")
+  const [memo, setMemo] = useState("")
+  const { pending, error, run } = useSubmit(onClose)
+
+  const options = billable.some((r) => r.billing!.id === cid)
+    ? billable
+    : [...billable, ...(fallback ? M.rooms.filter((r) => r.id === fallback.roomId) : [])]
+
+  return (
+    <FormShell
+      title="수납 기록"
+      description="저장하면 시트 「수납내역」 탭에 한 줄이 추가됩니다."
+      onClose={onClose}
+      pending={pending}
+      error={error}
+      submitLabel="저장하고 시트에 기록"
+      onSubmit={() =>
+        run(() => recordPaymentAction({ contractId: cid, month: m, amount: amount || 0, date, method, memo: memo.trim() }))
+      }
+    >
+      <Field label="호실 · 임차인" htmlFor="pay-c" full>
+        <NativeSelect
+          id="pay-c"
+          className="w-full"
+          value={cid}
+          onChange={(e) => {
+            setCid(e.target.value)
+            setAmount(suggest(e.target.value, m))
+          }}
+        >
+          {!initial && <NativeSelectOption value="">{monthNum(month)}월에 청구할 계약이 없습니다</NativeSelectOption>}
+          {options.map((r) => {
+            const c = r.billing ?? r.current!
+            const out = r.billing ? r.bill!.outstanding : 0
+            return (
+              <NativeSelectOption key={c.id} value={c.id}>
+                {roomName(r)} · {c.tenant} {out ? `(남은 ${won(out)})` : "(완료)"}
+              </NativeSelectOption>
+            )
+          })}
+        </NativeSelect>
+      </Field>
+      <Field label="청구월" htmlFor="pay-m">
+        <Input id="pay-m" type="month" className="h-10" value={m} onChange={(e) => { setM(e.target.value); if (e.target.value) setAmount(suggest(cid, e.target.value)) }} />
+      </Field>
+      <Field label="입금액 (원)" htmlFor="pay-a">
+        <MoneyInput id="pay-a" value={amount} onChange={setAmount} />
+      </Field>
+      <Field label="입금일" htmlFor="pay-d">
+        <Input id="pay-d" type="date" className="h-10" value={date} onChange={(e) => setDate(e.target.value)} />
+      </Field>
+      <div className="grid gap-1.5">
+        <span className="text-xs font-medium text-muted-foreground">방법</span>
+        <Seg label="방법" value={method} onChange={setMethod} items={["계좌이체", "현금", "기타"].map((v) => ({ v, label: v }))} />
+      </div>
+      <Field label="메모 (선택)" htmlFor="pay-memo" full>
+        <Input id="pay-memo" className="h-10" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 일부 입금, 입금자명 다름" />
+      </Field>
+    </FormShell>
+  )
+}
+
+/* ───────── 계약 등록 / 수정 ───────── */
+
+export function ContractDialog({ id, roomId: presetRoom, onClose }: { id?: string; roomId?: string; onClose: () => void }) {
+  const { data, M } = useRent()
+  const editing = id ? data.contracts.find((c) => c.id === id) : undefined
+  const initRoom = editing?.roomId ?? presetRoom ?? ""
+  const prev = !editing && initRoom
+    ? data.contracts.filter((c) => c.roomId === initRoom).sort((a, b) => b.start.localeCompare(a.start))[0]
+    : undefined
+  const base = editing ?? prev
+  const start0 = editing?.start ?? data.today
+  const s0 = parseDate(start0)
+
+  const [roomId, setRoomId] = useState(initRoom)
+  const [tenant, setTenant] = useState(editing?.tenant ?? "")
+  const [phone, setPhone] = useState(editing?.phone ?? "")
+  const [type, setType] = useState<ContractType>(base?.type ?? "월세")
+  const [deposit, setDeposit] = useState<number | "">(base?.deposit ?? "")
+  const [rent, setRent] = useState<number | "">(base?.rent || "")
+  const [fee, setFee] = useState<number | "">(base?.fee ?? "")
+  const [payDay, setPayDay] = useState(String(base?.payDay ?? 5))
+  const [start, setStart] = useState(start0)
+  const [end, setEnd] = useState(editing?.end ?? ymd(new Date(s0.getFullYear() + 2, s0.getMonth(), s0.getDate() - 1)))
+  const [memo, setMemo] = useState(editing?.memo ?? "")
+  const { pending, error, run } = useSubmit(onClose)
+
+  return (
+    <FormShell
+      wide
+      title={editing ? "계약 수정" : "새 계약 등록"}
+      description={editing ? "재계약은 기간·금액을 고쳐 저장하거나, 기존 계약을 종료한 뒤 새로 등록하세요." : "저장하면 시트 「계약」 탭에 추가됩니다."}
+      onClose={onClose}
+      pending={pending}
+      error={error}
+      submitLabel="저장"
+      onSubmit={() =>
+        run(() =>
+          saveContractAction({
+            id: editing?.id,
+            roomId,
+            tenant,
+            phone,
+            type,
+            deposit: deposit || 0,
+            rent: type === "전세" ? 0 : rent || 0,
+            fee: fee || 0,
+            payDay: Number(payDay) || 1,
+            start,
+            end,
+            memo,
+          }),
+        )
+      }
+    >
+      <Field label="호실" htmlFor="ct-room" full>
+        <NativeSelect id="ct-room" className="w-full" value={roomId} disabled={!!editing} onChange={(e) => setRoomId(e.target.value)}>
+          <NativeSelectOption value="">호실 선택</NativeSelectOption>
+          {data.buildings.map((b) => (
+            <NativeSelectOptGroup key={b.id} label={b.name}>
+              {M.rooms
+                .filter((r) => r.buildingId === b.id)
+                .map((r) => (
+                  <NativeSelectOption key={r.id} value={r.id}>
+                    {r.no}호 · {r.occupied ? r.current!.tenant : "공실"}
+                  </NativeSelectOption>
+                ))}
+            </NativeSelectOptGroup>
+          ))}
+        </NativeSelect>
+      </Field>
+      <Field label="임차인" htmlFor="ct-t">
+        <Input id="ct-t" className="h-10" autoComplete="off" value={tenant} onChange={(e) => setTenant(e.target.value)} />
+      </Field>
+      <Field label="연락처" htmlFor="ct-p">
+        <Input id="ct-p" className="h-10" type="tel" placeholder="010-0000-0000" value={phone} onChange={(e) => setPhone(e.target.value)} />
+      </Field>
+      <div className="grid gap-1.5 sm:col-span-2">
+        <span className="text-xs font-medium text-muted-foreground">유형</span>
+        <Seg label="계약 유형" value={type} onChange={setType}
+          items={[{ v: "월세", label: "월세 (임대료+관리비)" }, { v: "전세", label: "전세 (관리비만 청구)" }]} />
+      </div>
+      <Field label="보증금 (원)" htmlFor="ct-dep">
+        <MoneyInput id="ct-dep" value={deposit} onChange={setDeposit} />
+      </Field>
+      {type === "월세" && (
+        <Field label="월 임대료 (원)" htmlFor="ct-rent">
+          <MoneyInput id="ct-rent" value={rent} onChange={setRent} />
+        </Field>
+      )}
+      <Field label="월 관리비 (원)" htmlFor="ct-fee">
+        <MoneyInput id="ct-fee" value={fee} onChange={setFee} />
+      </Field>
+      <Field label="납부일 (매월)" htmlFor="ct-day">
+        <Input id="ct-day" type="number" min={1} max={31} className="h-10" value={payDay} onChange={(e) => setPayDay(e.target.value)} />
+      </Field>
+      <Field label="시작일" htmlFor="ct-s">
+        <Input id="ct-s" type="date" className="h-10" value={start} onChange={(e) => setStart(e.target.value)} />
+      </Field>
+      <Field label="종료일" htmlFor="ct-e">
+        <Input id="ct-e" type="date" className="h-10" value={end} onChange={(e) => setEnd(e.target.value)} />
+      </Field>
+      <Field label="메모 (선택)" htmlFor="ct-memo" full>
+        <Textarea id="ct-memo" value={memo} onChange={(e) => setMemo(e.target.value)} />
+      </Field>
+    </FormShell>
+  )
+}
+
+/* ───────── 계약 종료 ───────── */
+
+export function EndContractDialog({ id, onClose }: { id: string; onClose: () => void }) {
+  const { data, M } = useRent()
+  const c = data.contracts.find((x) => x.id === id)
+  const r = c ? M.rooms.find((x) => x.id === c.roomId) : undefined
+  const [end, setEnd] = useState(c && c.end < data.today ? c.end : data.today)
+  const { pending, error, run } = useSubmit(onClose)
+  if (!c) return null
+  return (
+    <FormShell
+      title="계약 종료 (퇴실)"
+      description={`${r ? roomName(r) : c.roomId} · ${c.tenant}`}
+      onClose={onClose}
+      pending={pending}
+      error={error}
+      submitLabel="종료 처리"
+      onSubmit={() => run(() => endContractAction(id, end))}
+    >
+      <Field label="퇴실일 (계약 종료일)" htmlFor="end-d" full>
+        <Input id="end-d" type="date" className="h-10" value={end} onChange={(e) => setEnd(e.target.value)} />
+      </Field>
+      <p className="text-sm text-muted-foreground sm:col-span-2">
+        상태가 「종료」로 바뀌고 이 호실은 공실이 됩니다. 보증금 반환은 메모로 남겨두세요.
+      </p>
+    </FormShell>
+  )
+}
+
+/* ───────── 수납 기록 삭제 ───────── */
+
+export function DeletePaymentDialog({ id, onClose }: { id: string; onClose: () => void }) {
+  const { data } = useRent()
+  const p = data.payments.find((x) => x.id === id)
+  const { pending, error, run } = useSubmit(onClose)
+  if (!p) return null
+  return (
+    <FormShell
+      title="수납 기록 삭제"
+      description={`${dotDate(p.date)} · ${won(p.amount)} · ${monthNum(p.month)}월분`}
+      onClose={onClose}
+      pending={pending}
+      error={error}
+      submitLabel="삭제"
+      destructive
+      onSubmit={() => run(() => deletePaymentAction(id))}
+    >
+      <p className="text-sm text-muted-foreground sm:col-span-2">시트 「수납내역」 탭에서 이 행이 삭제됩니다.</p>
+    </FormShell>
+  )
+}

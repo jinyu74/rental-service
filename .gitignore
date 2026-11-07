@@ -39,3 +39,16 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+!.env.example
+
+# ── 보안: 비밀 값은 절대 커밋하지 않음 ──
+# 환경변수는 .env.example 만 커밋 (위의 .env* 규칙 + 예외)
+# 구글 서비스 계정 키(JSON) 등 인증 파일
+*service-account*.json
+*credentials*.json
+*-key.json
+*.key
+*.p12
+*.pfx
+# Netlify CLI 로컬 설정 (사이트 ID·토큰)
+.netlify
