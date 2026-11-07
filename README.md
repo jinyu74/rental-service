@@ -74,6 +74,25 @@ Netlify 배포 순서
 
 임차인 이름·연락처가 들어가므로 `AUTH_PASSWORD` 없이 배포하지 마세요(설정이 없으면 운영 환경에서는 로그인이 불가능하게 막혀 있습니다).
 
+## 브랜치 전략
+
+| 브랜치 | 역할 | 배포 |
+|---|---|---|
+| `main` | 운영 | Netlify Production (실제 시트) |
+| `develop` | 개발 통합 · 기본 브랜치 | Netlify 브랜치 배포 `develop--<이름>.netlify.app` (테스트 시트) |
+| `feature/*`, `fix/*` | 작업 | `develop` 으로 PR → Deploy Preview |
+| `hotfix/*` | 긴급 수정 | `main` 에서 분기 → `main` 으로 PR, 이후 `main` → `develop` 반영 |
+
+GitHub 규칙으로 강제됩니다: `main`·`develop` 직접 푸시·강제 푸시·삭제 금지, PR + CI(`build`) 통과 필수,
+`main` 은 `develop`·`hotfix/*` 에서 온 PR 만 허용(`source-branch` 검사). 자세한 규칙은 `AGENTS.md`.
+
+```bash
+git switch develop && git pull
+git switch -c feature/수납-엑셀-내보내기
+# 작업 후
+git push -u origin HEAD && gh pr create --base develop
+```
+
 ## 구조
 
 ```
