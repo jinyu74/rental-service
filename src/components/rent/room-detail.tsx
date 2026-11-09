@@ -1,6 +1,6 @@
 "use client"
 
-import { FileSpreadsheet, MessageSquare, Phone, Plus, Trash2 } from "lucide-react"
+import { FileSpreadsheet, MessageSquare, Pencil, Phone, Plus, Trash2 } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
@@ -45,7 +45,7 @@ export function RoomDetail({ room: r, hideTitle }: { room: RoomView; hideTitle?:
         {!hideTitle && <h2 className="text-2xl font-bold">{r.no}호</h2>}
       </div>
       <div className="flex items-center gap-1.5">
-        <TypeBadge contract={c} />
+        {c && <TypeBadge contract={c} />}
         <Pill tone={tone}>{statusLabel(r)}</Pill>
       </div>
     </div>
@@ -67,7 +67,7 @@ export function RoomDetail({ room: r, hideTitle }: { room: RoomView; hideTitle?:
             <Plus /> 이 호실에 새 계약 등록
           </Button>
         </div>
-        <Source text={`원본: 「호실」 탭 · ${r.id}`} />
+        <RoomAdmin room={r} />
       </div>
     )
   }
@@ -221,7 +221,33 @@ export function RoomDetail({ room: r, hideTitle }: { room: RoomView; hideTitle?:
         </Button>
       </div>
       <Source text={`원본: 「계약」 탭 ${c.row}행 · ${c.id}`} />
+      <RoomAdmin room={r} />
     </div>
+  )
+}
+
+/** 호실 자체(호수·층·면적·메모) 관리. 계약·수납 기록이 있으면 삭제 대신 안내만 */
+function RoomAdmin({ room: r }: { room: RoomView }) {
+  const { data, openDialog } = useRent()
+  const used = r.list.length > 0 || data.payments.some((p) => p.roomId === r.id)
+  return (
+    <section className="space-y-2 border-t pt-4">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold tracking-wide text-muted-foreground">호실 정보</h3>
+        <div className="flex gap-1.5">
+          <Button variant="outline" size="sm" onClick={() => openDialog({ kind: "room", id: r.id })}>
+            <Pencil /> 수정
+          </Button>
+          {!used && (
+            <Button variant="outline" size="sm" className="text-destructive" onClick={() => openDialog({ kind: "deleteRoom", id: r.id })}>
+              <Trash2 /> 삭제
+            </Button>
+          )}
+        </div>
+      </div>
+      {r.memo && <p className="text-sm">메모: {r.memo}</p>}
+      <Source text={`원본: 「호실」 탭 ${r.row}행 · ${r.id}${used ? " · 계약 기록이 있어 삭제 불가" : ""}`} />
+    </section>
   )
 }
 

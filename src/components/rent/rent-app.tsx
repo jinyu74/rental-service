@@ -10,7 +10,17 @@ import { DashboardView } from "./dashboard-view"
 import { UnitsView } from "./units-view"
 import { PaymentsView } from "./payments-view"
 import { RoomDetail } from "./room-detail"
-import { ContractDialog, DeletePaymentDialog, EndContractDialog, PayDialog } from "./dialogs"
+import {
+  BuildingDialog,
+  BuildingsDialog,
+  ContractDialog,
+  DeleteBuildingDialog,
+  DeletePaymentDialog,
+  DeleteRoomDialog,
+  EndContractDialog,
+  PayDialog,
+  RoomDialog,
+} from "./dialogs"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 
 export type View = "dashboard" | "units" | "payments"
@@ -20,6 +30,11 @@ export type DialogState =
   | { kind: "contract"; id?: string; roomId?: string }
   | { kind: "end"; id: string }
   | { kind: "delete"; id: string }
+  | { kind: "buildings" }
+  | { kind: "building"; id?: string }
+  | { kind: "deleteBuilding"; id: string }
+  | { kind: "room"; id?: string; buildingId?: string }
+  | { kind: "deleteRoom"; id: string }
   | null
 
 interface RentCtx {
@@ -135,6 +150,11 @@ export function RentApp({ view, data }: { view: View; data: AppData }) {
       {dialog?.kind === "contract" && <ContractDialog id={dialog.id} roomId={dialog.roomId} onClose={closeDialog} />}
       {dialog?.kind === "end" && <EndContractDialog id={dialog.id} onClose={closeDialog} />}
       {dialog?.kind === "delete" && <DeletePaymentDialog id={dialog.id} onClose={closeDialog} />}
+      {dialog?.kind === "buildings" && <BuildingsDialog onClose={closeDialog} />}
+      {dialog?.kind === "building" && <BuildingDialog key={dialog.id ?? "new"} id={dialog.id} onClose={closeDialog} />}
+      {dialog?.kind === "deleteBuilding" && <DeleteBuildingDialog id={dialog.id} onClose={closeDialog} />}
+      {dialog?.kind === "room" && <RoomDialog id={dialog.id} buildingId={dialog.buildingId} onClose={closeDialog} />}
+      {dialog?.kind === "deleteRoom" && <DeleteRoomDialog id={dialog.id} onClose={closeDialog} />}
     </Ctx.Provider>
   )
 }
