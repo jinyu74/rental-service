@@ -75,7 +75,7 @@ export function compute(data: AppData, month: string) {
       const billing = list.find((c) => c.start <= mEnd && (c.status === "진행" || c.end >= mStart)) ?? null
       const current =
         list.find((c) => c.status === "진행" && c.start <= today) ?? list.find((c) => c.status === "진행") ?? null
-      const building = bMap.get(r.buildingId) ?? { id: r.buildingId, name: r.buildingId, address: "", memo: "" }
+      const building = bMap.get(r.buildingId) ?? { id: r.buildingId, name: r.buildingId, address: "", memo: "", row: 0 }
       return {
         ...r,
         building,
