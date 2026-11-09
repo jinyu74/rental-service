@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, type FormEvent, type ReactNode } from "react"
+import { createContext, useContext, useState, useTransition, type FormEvent, type ReactNode } from "react"
 import { Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import {
@@ -29,6 +29,9 @@ import { useRent } from "./rent-app"
 
 /* ───────── 공통: 휴대폰은 아래 시트, PC 는 가운데 대화상자 ───────── */
 
+/** 입력 이벤트가 나지 않는 선택 버튼(Seg 등)이 「작성 중」을 알리는 통로 */
+const DirtyCtx = createContext<() => void>(() => {})
+
 function FormShell({
   title,
   description,
@@ -53,8 +56,20 @@ function FormShell({
   children: ReactNode
 }) {
   const { isMobile } = useRent()
+  // 사용자가 무언가 입력·선택했는지. 작성 중이면 닫기 전에 한 번 묻는다
+  const [dirty, setDirty] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const markDirty = () => {
+    if (!dirty) setDirty(true)
+  }
+  const requestClose = () => {
+    if (pending) return
+    if (dirty) setConfirming(true)
+    else onClose()
+  }
   const submit = (e: FormEvent) => {
     e.preventDefault()
+    setConfirming(false)
     onSubmit()
   }
   const body = (
@@ -67,9 +82,21 @@ function FormShell({
       )}
     </>
   )
-  const actions = (
+  const actions = confirming ? (
+    <div role="alertdialog" aria-label="닫기 확인" className="col-span-2 flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+      <p className="text-sm font-medium sm:mr-auto">작성 중인 내용이 있습니다. 닫을까요?</p>
+      <div className="grid grid-cols-2 gap-2 sm:flex">
+        <Button type="button" variant="outline" size="lg" autoFocus onClick={() => setConfirming(false)}>
+          계속 작성
+        </Button>
+        <Button type="button" variant="destructive" size="lg" onClick={onClose}>
+          닫기
+        </Button>
+      </div>
+    </div>
+  ) : (
     <>
-      <Button type="button" variant="outline" size="lg" onClick={onClose}>
+      <Button type="button" variant="outline" size="lg" onClick={requestClose}>
         취소
       </Button>
       <Button type="submit" size="lg" variant={destructive ? "destructive" : "default"} disabled={pending}>
@@ -77,37 +104,43 @@ function FormShell({
       </Button>
     </>
   )
-  const onOpenChange = (open: boolean) => !open && !pending && onClose()
+  // 배경 누름으로는 닫지 않는다(disablePointerDismissal). Esc·X 는 requestClose 를 거친다
+  const onOpenChange = (open: boolean) => !open && requestClose()
+  const formProps = { onSubmit: submit, onInput: markDirty, onChange: markDirty, noValidate: true }
 
   if (isMobile)
     return (
-      <Sheet open onOpenChange={onOpenChange}>
-        <SheetContent side="bottom" className="gap-0 overflow-hidden rounded-t-2xl p-0 data-[side=bottom]:max-h-[92dvh]">
-          <form onSubmit={submit} noValidate className="flex min-h-0 flex-1 flex-col">
-            <SheetHeader className="border-b px-5 py-3">
-              <SheetTitle>{title}</SheetTitle>
-              {description && <SheetDescription>{description}</SheetDescription>}
-            </SheetHeader>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">{body}</div>
-            <SheetFooter className="grid grid-cols-2 border-t px-5 pt-3 pb-[calc(env(safe-area-inset-bottom)+12px)]">{actions}</SheetFooter>
-          </form>
-        </SheetContent>
-      </Sheet>
+      <DirtyCtx.Provider value={markDirty}>
+        <Sheet open onOpenChange={onOpenChange} disablePointerDismissal>
+          <SheetContent side="bottom" className="gap-0 overflow-hidden rounded-t-2xl p-0 data-[side=bottom]:max-h-[92dvh]">
+            <form {...formProps} className="flex min-h-0 flex-1 flex-col">
+              <SheetHeader className="border-b px-5 py-3">
+                <SheetTitle>{title}</SheetTitle>
+                {description && <SheetDescription>{description}</SheetDescription>}
+              </SheetHeader>
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">{body}</div>
+              <SheetFooter className="grid grid-cols-2 border-t px-5 pt-3 pb-[calc(env(safe-area-inset-bottom)+12px)]">{actions}</SheetFooter>
+            </form>
+          </SheetContent>
+        </Sheet>
+      </DirtyCtx.Provider>
     )
 
   return (
-    <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className={cn("sm:max-w-md", wide && "sm:max-w-2xl")}>
-        <form onSubmit={submit} noValidate className="grid gap-4">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-semibold">{title}</DialogTitle>
-            {description && <DialogDescription>{description}</DialogDescription>}
-          </DialogHeader>
-          <div>{body}</div>
-          <DialogFooter>{actions}</DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <DirtyCtx.Provider value={markDirty}>
+      <Dialog open onOpenChange={onOpenChange} disablePointerDismissal>
+        <DialogContent className={cn("sm:max-w-md", wide && "sm:max-w-2xl")}>
+          <form {...formProps} className="grid gap-4">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-semibold">{title}</DialogTitle>
+              {description && <DialogDescription>{description}</DialogDescription>}
+            </DialogHeader>
+            <div>{body}</div>
+            <DialogFooter>{actions}</DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </DirtyCtx.Provider>
   )
 }
 
@@ -138,11 +171,16 @@ function MoneyInput({ id, value, onChange }: { id: string; value: number | ""; o
 }
 
 function Seg<T extends string>({ value, onChange, items, label }: { value: T; onChange: (v: T) => void; items: { v: T; label: string }[]; label: string }) {
+  const markDirty = useContext(DirtyCtx)
   return (
     <ToggleGroup
       aria-label={label}
       value={[value]}
-      onValueChange={(v) => v[0] && onChange(v[0] as T)}
+      onValueChange={(v) => {
+        if (!v[0]) return
+        markDirty()
+        onChange(v[0] as T)
+      }}
       variant="outline"
       spacing={0}
       className="w-full"
