@@ -12,6 +12,9 @@ export interface Tables {
 export interface Store {
   readAll(): Promise<Tables>
   append(key: SheetKey, row: (string | number)[]): Promise<void>
-  updateCells(key: SheetKey, row: number, fromHeader: string, values: (string | number)[]): Promise<void>
-  deleteRow(key: SheetKey, row: number): Promise<void>
+  /** row 행의 첫 열(ID)이 id 와 같을 때만 쓴다. 다르면 STALE 오류 (그사이 행이 밀린 경우) */
+  updateCells(key: SheetKey, row: number, id: string, fromHeader: string, values: (string | number)[]): Promise<void>
+  deleteRow(key: SheetKey, row: number, id: string): Promise<void>
 }
+
+export const STALE = "시트 내용이 그사이 바뀌었습니다. 새로고침 후 다시 시도하세요."

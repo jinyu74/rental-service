@@ -2,7 +2,7 @@ import "server-only"
 import { SHEETS, type SheetKey } from "./schema"
 import { range, sheetsFetch } from "./google"
 import { mapBuilding, mapContract, mapPayment, mapRoom, toObjects } from "./normalize"
-import type { Store, Tables } from "./store"
+import { STALE, type Store, type Tables } from "./store"
 
 type BatchGet = { valueRanges: { values?: unknown[][] }[] }
 
@@ -34,7 +34,14 @@ async function append(key: SheetKey, row: (string | number)[]) {
 
 const col = (i: number) => String.fromCharCode(65 + i)
 
-async function updateCells(key: SheetKey, row: number, fromHeader: string, values: (string | number)[]) {
+/** 쓰기 직전에 대상 행의 ID 를 다시 확인한다. 읽은 뒤 다른 요청이 행을 지웠다면 엉뚱한 행을 고치지 않도록 멈춘다 */
+async function assertRowId(key: SheetKey, row: number, id: string) {
+  const res = await sheetsFetch<{ values?: unknown[][] }>(`/values/${range(SHEETS[key].name, `A${row}`)}?valueRenderOption=UNFORMATTED_VALUE`)
+  if (String(res.values?.[0]?.[0] ?? "").trim() !== id) throw new Error(STALE)
+}
+
+async function updateCells(key: SheetKey, row: number, id: string, fromHeader: string, values: (string | number)[]) {
+  await assertRowId(key, row, id)
   const start = SHEETS[key].headers.indexOf(fromHeader as never)
   const a1 = `${col(start)}${row}:${col(start + values.length - 1)}${row}`
   await sheetsFetch(`/values/${range(SHEETS[key].name, a1)}?valueInputOption=RAW`, {
@@ -43,7 +50,8 @@ async function updateCells(key: SheetKey, row: number, fromHeader: string, value
   })
 }
 
-async function deleteRow(key: SheetKey, row: number) {
+async function deleteRow(key: SheetKey, row: number, id: string) {
+  await assertRowId(key, row, id)
   const meta = await sheetsFetch<{ sheets: { properties: { sheetId: number; title: string } }[] }>(
     "?fields=sheets.properties(sheetId,title)",
   )

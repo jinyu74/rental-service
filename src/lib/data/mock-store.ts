@@ -2,7 +2,7 @@ import "server-only"
 import { pad, ymd } from "../format"
 import { SHEETS, type SheetKey, DEFAULT_BUILDINGS, defaultRooms } from "./schema"
 import { mapBuilding, mapContract, mapPayment, mapRoom, toObjects } from "./normalize"
-import type { Store, Tables } from "./store"
+import { STALE, type Store, type Tables } from "./store"
 
 /**
  * 구글 시트 없이 화면을 확인하기 위한 메모리 저장소.
@@ -64,12 +64,14 @@ export const mockStore: Store = {
   async append(key, row) {
     grid()[key].push(row)
   },
-  async updateCells(key, row, fromHeader, values) {
+  async updateCells(key, row, id, fromHeader, values) {
+    if (String(grid()[key][row - 1]?.[0] ?? "") !== id) throw new Error(STALE)
     const start = SHEETS[key].headers.indexOf(fromHeader as never)
     const target = grid()[key][row - 1]
     values.forEach((v, i) => (target[start + i] = v))
   },
-  async deleteRow(key, row) {
+  async deleteRow(key, row, id) {
+    if (String(grid()[key][row - 1]?.[0] ?? "") !== id) throw new Error(STALE)
     grid()[key].splice(row - 1, 1)
   },
 }

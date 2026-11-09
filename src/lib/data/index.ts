@@ -16,6 +16,19 @@ function newId(prefix: string) {
   return `${prefix}-${s}-${Math.floor(Math.random() * 900 + 100)}`
 }
 
+/**
+ * 쓰기 작업 직렬화. 「읽고 → 검사하고 → 쓰기」가 같은 서버 안에서 서로 끼어들지 않게 한다.
+ * 다른 서버 인스턴스와의 경합은 구글 시트에 트랜잭션이 없어 막을 수 없으므로, 쓰기 직전 행 ID 확인(STALE)으로 줄인다.
+ */
+const gw = globalThis as unknown as { __rentWriteChain?: Promise<unknown> }
+function exclusive<A extends unknown[]>(fn: (...a: A) => Promise<void>) {
+  return (...a: A): Promise<void> => {
+    const run = (gw.__rentWriteChain ?? Promise.resolve()).then(() => fn(...a))
+    gw.__rentWriteChain = run.catch(() => {})
+    return run
+  }
+}
+
 export async function getData(): Promise<AppData> {
   const t = await store().readAll()
   const now = seoulNow()
@@ -28,7 +41,7 @@ export async function getData(): Promise<AppData> {
   }
 }
 
-export async function recordPayment(p: PaymentInput) {
+async function _recordPayment(p: PaymentInput) {
   if (!p.contractId || !p.month) throw new Error("계약과 청구월이 필요합니다.")
   if (!(p.amount > 0)) throw new Error("입금액을 확인하세요.")
   if (!MONTH.test(p.month)) throw new Error("청구월 형식은 YYYY-MM 입니다.")
@@ -39,14 +52,14 @@ export async function recordPayment(p: PaymentInput) {
   await store().append("payments", [newId("P"), c.id, c.roomId, p.month, p.amount, p.date, p.method || "계좌이체", p.memo || "", seoulNow().stamp])
 }
 
-export async function deletePayment(id: string) {
+async function _deletePayment(id: string) {
   const { payments } = await store().readAll()
   const hit = payments.find((p) => p.id === id)
   if (!hit) throw new Error("수납 기록을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
-  await store().deleteRow("payments", hit.row)
+  await store().deleteRow("payments", hit.row, hit.id)
 }
 
-export async function saveContract(c: ContractInput) {
+async function _saveContract(c: ContractInput) {
   if (!c.roomId) throw new Error("호실을 선택하세요.")
   if (!c.tenant.trim()) throw new Error("임차인 이름을 입력하세요.")
   if (c.type !== "월세" && c.type !== "전세") throw new Error("유형은 월세 또는 전세입니다.")
@@ -66,26 +79,26 @@ export async function saveContract(c: ContractInput) {
   if (c.id) {
     const hit = contracts.find((x) => x.id === c.id)
     if (!hit) throw new Error("계약을 찾을 수 없습니다.")
-    await store().updateCells("contracts", hit.row, "호실ID", [...values, hit.status, c.memo])
+    await store().updateCells("contracts", hit.row, hit.id, "호실ID", [...values, hit.status, c.memo])
     return
   }
   await store().append("contracts", [newId("C"), ...values, "진행", c.memo, seoulNow().stamp])
 }
 
-export async function endContract(id: string, end: string) {
+async function _endContract(id: string, end: string) {
   if (!DATE.test(end)) throw new Error("퇴실일을 확인하세요.")
   const { contracts } = await store().readAll()
   const hit = contracts.find((x) => x.id === id)
   if (!hit) throw new Error("계약을 찾을 수 없습니다.")
   if (end < hit.start) throw new Error("퇴실일이 계약 시작일보다 빠릅니다.")
-  await store().updateCells("contracts", hit.row, "종료일", [end, "종료"])
+  await store().updateCells("contracts", hit.row, hit.id, "종료일", [end, "종료"])
 }
 
 /* ───────── 건물 ───────── */
 
 const BUILDING_CODE = /^[A-Z0-9]{1,6}$/
 
-export async function saveBuilding(b: BuildingInput) {
+async function _saveBuilding(b: BuildingInput) {
   const name = b.name.trim()
   if (!name) throw new Error("건물명을 입력하세요.")
   const { buildings } = await store().readAll()
@@ -94,7 +107,7 @@ export async function saveBuilding(b: BuildingInput) {
   if (b.id) {
     const hit = buildings.find((x) => x.id === b.id)
     if (!hit) throw new Error("건물을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
-    await store().updateCells("buildings", hit.row, "건물명", [name, b.address.trim(), b.memo.trim()])
+    await store().updateCells("buildings", hit.row, hit.id, "건물명", [name, b.address.trim(), b.memo.trim()])
     return
   }
   const code = b.code.trim().toUpperCase()
@@ -103,20 +116,20 @@ export async function saveBuilding(b: BuildingInput) {
   await store().append("buildings", [code, name, b.address.trim(), b.memo.trim()])
 }
 
-export async function deleteBuilding(id: string) {
+async function _deleteBuilding(id: string) {
   const { buildings, rooms } = await store().readAll()
   const hit = buildings.find((x) => x.id === id)
   if (!hit) throw new Error("건물을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
   const n = rooms.filter((r) => r.buildingId === id).length
   if (n) throw new Error(`호실이 ${n}개 있어 삭제할 수 없습니다. 호실을 먼저 삭제하세요.`)
-  await store().deleteRow("buildings", hit.row)
+  await store().deleteRow("buildings", hit.row, hit.id)
 }
 
 /* ───────── 호실 ───────── */
 
 const ROOM_NO = /^[0-9A-Za-z]{1,8}$/
 
-export async function saveRoom(r: RoomInput) {
+async function _saveRoom(r: RoomInput) {
   const no = r.no.trim().toUpperCase()
   if (!ROOM_NO.test(no)) throw new Error("호수는 영문·숫자 1~8자입니다. 예: 301, B01")
   if (!Number.isInteger(r.floor) || r.floor < -9 || r.floor > 99) throw new Error("층을 확인하세요. 지하는 -1 처럼 입력합니다.")
@@ -130,7 +143,7 @@ export async function saveRoom(r: RoomInput) {
     if (!hit) throw new Error("호실을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
     if (rooms.some((x) => x.buildingId === hit.buildingId && x.no === no && x.id !== hit.id)) throw new Error(`${no}호가 이미 있습니다.`)
     // 호실ID 는 계약·수납 기록과 연결돼 있어 바꾸지 않는다
-    await store().updateCells("rooms", hit.row, "호수", [no, r.floor, area, memo])
+    await store().updateCells("rooms", hit.row, hit.id, "호수", [no, r.floor, area, memo])
     return
   }
   if (!buildings.some((b) => b.id === r.buildingId)) throw new Error("건물을 선택하세요.")
@@ -139,11 +152,20 @@ export async function saveRoom(r: RoomInput) {
   await store().append("rooms", [id, r.buildingId, no, r.floor, area, memo])
 }
 
-export async function deleteRoom(id: string) {
+async function _deleteRoom(id: string) {
   const { rooms, contracts, payments } = await store().readAll()
   const hit = rooms.find((x) => x.id === id)
   if (!hit) throw new Error("호실을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
   if (contracts.some((c) => c.roomId === id) || payments.some((p) => p.roomId === id))
     throw new Error("계약·수납 기록이 있는 호실은 삭제할 수 없습니다.")
-  await store().deleteRow("rooms", hit.row)
+  await store().deleteRow("rooms", hit.row, hit.id)
 }
+
+export const recordPayment = exclusive(_recordPayment)
+export const deletePayment = exclusive(_deletePayment)
+export const saveContract = exclusive(_saveContract)
+export const endContract = exclusive(_endContract)
+export const saveBuilding = exclusive(_saveBuilding)
+export const deleteBuilding = exclusive(_deleteBuilding)
+export const saveRoom = exclusive(_saveRoom)
+export const deleteRoom = exclusive(_deleteRoom)
