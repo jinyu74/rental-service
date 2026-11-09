@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Plus, Search } from "lucide-react"
+import { Building2, DoorOpen, Plus, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -94,6 +94,13 @@ export function UnitsView() {
         title="호실·계약 관리"
       >
         <MonthSwitcher month={month} onChange={setMonth} />
+        <Button variant="outline" size="lg" aria-label="건물 관리" title="건물 관리" onClick={() => openDialog({ kind: "buildings" })}>
+          <Building2 /> <span className="hidden sm:inline">건물 관리</span>
+        </Button>
+        <Button variant="outline" size="lg" aria-label="호실 추가" title="호실 추가"
+          onClick={() => openDialog({ kind: "room", buildingId: bf === "all" ? undefined : bf })}>
+          <DoorOpen /> <span className="hidden sm:inline">호실 추가</span>
+        </Button>
         <Button size="lg" onClick={() => openDialog({ kind: "contract" })}>
           <Plus /> 새 계약
         </Button>

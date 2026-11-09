@@ -1,8 +1,18 @@
 "use client"
 
 import { useState, useTransition, type FormEvent, type ReactNode } from "react"
+import { Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
-import { deletePaymentAction, endContractAction, recordPaymentAction, saveContractAction } from "@/app/actions"
+import {
+  deleteBuildingAction,
+  deletePaymentAction,
+  deleteRoomAction,
+  endContractAction,
+  recordPaymentAction,
+  saveBuildingAction,
+  saveContractAction,
+  saveRoomAction,
+} from "@/app/actions"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -403,6 +413,202 @@ export function DeletePaymentDialog({ id, onClose }: { id: string; onClose: () =
       onSubmit={() => run(() => deletePaymentAction(id))}
     >
       <p className="text-sm text-muted-foreground sm:col-span-2">시트 「수납내역」 탭에서 이 행이 삭제됩니다.</p>
+    </FormShell>
+  )
+}
+
+/* ───────── 건물 관리 (목록) ───────── */
+
+export function BuildingsDialog({ onClose }: { onClose: () => void }) {
+  const { data, openDialog } = useRent()
+  const count = (id: string) => data.rooms.filter((r) => r.buildingId === id).length
+  return (
+    <FormShell
+      title="건물 관리"
+      description="건물 이름·주소를 고치거나 새 건물을 추가합니다. 호실이 남아 있는 건물은 삭제할 수 없습니다."
+      onClose={onClose}
+      pending={false}
+      error={null}
+      submitLabel="건물 추가"
+      onSubmit={() => openDialog({ kind: "building" })}
+    >
+      <ul className="divide-y rounded-lg border sm:col-span-2">
+        {data.buildings.map((b) => (
+          <li key={b.id} className="flex items-center gap-2 px-3 py-2.5">
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium">
+                {b.name} <span className="text-xs font-normal text-muted-foreground">{b.id} · {count(b.id)}실</span>
+              </p>
+              <p className="truncate text-xs text-muted-foreground">{b.address || "주소 없음"}</p>
+            </div>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={`${b.name} 수정`} onClick={() => openDialog({ kind: "building", id: b.id })}>
+              <Pencil />
+            </Button>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={`${b.name} 삭제`} disabled={count(b.id) > 0}
+              onClick={() => openDialog({ kind: "deleteBuilding", id: b.id })}>
+              <Trash2 />
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </FormShell>
+  )
+}
+
+/* ───────── 건물 추가 / 수정 ───────── */
+
+export function BuildingDialog({ id, onClose }: { id?: string; onClose: () => void }) {
+  const { data } = useRent()
+  const editing = id ? data.buildings.find((b) => b.id === id) : undefined
+  const [code, setCode] = useState(editing?.id ?? "")
+  const [name, setName] = useState(editing?.name ?? "")
+  const [address, setAddress] = useState(editing?.address ?? "")
+  const [memo, setMemo] = useState(editing?.memo ?? "")
+  const { pending, error, run } = useSubmit(onClose)
+  return (
+    <FormShell
+      title={editing ? "건물 정보 수정" : "건물 추가"}
+      description="저장하면 시트 「건물」 탭에 반영됩니다."
+      onClose={onClose}
+      pending={pending}
+      error={error}
+      submitLabel="저장"
+      onSubmit={() => run(() => saveBuildingAction({ id: editing?.id, code, name, address, memo }))}
+    >
+      <Field label="건물명" htmlFor="bd-name">
+        <Input id="bd-name" className="h-10" autoComplete="off" placeholder="예: 원주건물" value={name} onChange={(e) => setName(e.target.value)} />
+      </Field>
+      <Field label={editing ? "건물 코드 (변경 불가)" : "건물 코드 (영문 대문자·숫자)"} htmlFor="bd-code">
+        <Input id="bd-code" className="h-10 uppercase" autoComplete="off" placeholder="예: WJ" maxLength={6} disabled={!!editing}
+          value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} />
+      </Field>
+      <Field label="주소 (선택)" htmlFor="bd-addr" full>
+        <Input id="bd-addr" className="h-10" value={address} onChange={(e) => setAddress(e.target.value)} />
+      </Field>
+      <Field label="메모 (선택)" htmlFor="bd-memo" full>
+        <Input id="bd-memo" className="h-10" value={memo} onChange={(e) => setMemo(e.target.value)} />
+      </Field>
+      {!editing && (
+        <p className="text-xs text-muted-foreground sm:col-span-2">건물 코드는 호실ID 앞부분이 됩니다(예: WJ-101). 저장 후에는 바꿀 수 없습니다.</p>
+      )}
+    </FormShell>
+  )
+}
+
+export function DeleteBuildingDialog({ id, onClose }: { id: string; onClose: () => void }) {
+  const { data } = useRent()
+  const b = data.buildings.find((x) => x.id === id)
+  const { pending, error, run } = useSubmit(onClose)
+  if (!b) return null
+  return (
+    <FormShell
+      title="건물 삭제"
+      description={`${b.name} (${b.id})`}
+      onClose={onClose}
+      pending={pending}
+      error={error}
+      submitLabel="삭제"
+      destructive
+      onSubmit={() => run(() => deleteBuildingAction(id))}
+    >
+      <p className="text-sm text-muted-foreground sm:col-span-2">시트 「건물」 탭에서 이 행이 삭제됩니다.</p>
+    </FormShell>
+  )
+}
+
+/* ───────── 호실 추가 / 수정 ───────── */
+
+/** "301" → 3, "1201" → 12, "B01" → -1 */
+function floorFromNo(no: string) {
+  const t = no.trim().toUpperCase()
+  const b = t.match(/^B(\d)\d*$/)
+  if (b) return -(Number(b[1]) || 1)
+  if (/^\d{3,4}$/.test(t)) return Number(t.slice(0, -2))
+  return null
+}
+
+export function RoomDialog({ id, buildingId: presetBuilding, onClose }: { id?: string; buildingId?: string; onClose: () => void }) {
+  const { data } = useRent()
+  const editing = id ? data.rooms.find((r) => r.id === id) : undefined
+  const [buildingId, setBuildingId] = useState(editing?.buildingId ?? presetBuilding ?? data.buildings[0]?.id ?? "")
+  const [no, setNo] = useState(editing?.no ?? "")
+  const [floor, setFloor] = useState(editing ? String(editing.floor) : "")
+  const [floorTouched, setFloorTouched] = useState(!!editing)
+  const [area, setArea] = useState(editing?.area != null ? String(editing.area) : "")
+  const [memo, setMemo] = useState(editing?.memo ?? "")
+  const { pending, error, setError, run } = useSubmit(onClose)
+
+  const submit = () => {
+    const f = Number(floor)
+    if (floor.trim() === "" || !Number.isInteger(f)) return setError("층을 숫자로 입력하세요. 지하는 -1 처럼 입력합니다.")
+    const a = area.trim() === "" ? null : Number(area)
+    if (a != null && Number.isNaN(a)) return setError("면적은 숫자로 입력하세요.")
+    run(() => saveRoomAction({ id: editing?.id, buildingId, no, floor: f, area: a, memo }))
+  }
+
+  return (
+    <FormShell
+      title={editing ? "호실 정보 수정" : "호실 추가"}
+      description={editing ? `호실ID ${editing.id} 는 계약·수납 기록과 연결돼 있어 바뀌지 않습니다.` : "저장하면 시트 「호실」 탭에 추가됩니다."}
+      onClose={onClose}
+      pending={pending}
+      error={error}
+      submitLabel="저장"
+      onSubmit={submit}
+    >
+      <Field label="건물" htmlFor="rm-b" full>
+        <NativeSelect id="rm-b" className="w-full" value={buildingId} disabled={!!editing} onChange={(e) => setBuildingId(e.target.value)}>
+          {data.buildings.map((b) => (
+            <NativeSelectOption key={b.id} value={b.id}>
+              {b.name} ({b.id})
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </Field>
+      <Field label="호수" htmlFor="rm-no">
+        <Input id="rm-no" className="h-10" autoComplete="off" placeholder="예: 301" value={no}
+          onChange={(e) => {
+            setNo(e.target.value)
+            const f = floorFromNo(e.target.value)
+            if (!floorTouched && f != null) setFloor(String(f))
+          }} />
+      </Field>
+      <Field label="층" htmlFor="rm-f">
+        <Input id="rm-f" type="number" inputMode="numeric" className="h-10" value={floor}
+          onChange={(e) => { setFloor(e.target.value); setFloorTouched(true) }} />
+      </Field>
+      <Field label="면적 ㎡ (선택)" htmlFor="rm-a">
+        <Input id="rm-a" inputMode="decimal" className="h-10" value={area} onChange={(e) => setArea(e.target.value)} />
+      </Field>
+      <Field label="메모 (선택)" htmlFor="rm-memo">
+        <Input id="rm-memo" className="h-10" value={memo} onChange={(e) => setMemo(e.target.value)} />
+      </Field>
+      {!editing && buildingId && no.trim() && (
+        <p className="text-xs text-muted-foreground sm:col-span-2">
+          호실ID: <span className="num font-medium text-foreground">{buildingId}-{no.trim().toUpperCase()}</span>
+        </p>
+      )}
+    </FormShell>
+  )
+}
+
+export function DeleteRoomDialog({ id, onClose }: { id: string; onClose: () => void }) {
+  const { M } = useRent()
+  const r = M.rooms.find((x) => x.id === id)
+  const { pending, error, run } = useSubmit(onClose)
+  if (!r) return null
+  return (
+    <FormShell
+      title="호실 삭제"
+      description={`${roomName(r)} (${r.id})`}
+      onClose={onClose}
+      pending={pending}
+      error={error}
+      submitLabel="삭제"
+      destructive
+      onSubmit={() => run(() => deleteRoomAction(id))}
+    >
+      <p className="text-sm text-muted-foreground sm:col-span-2">시트 「호실」 탭에서 이 행이 삭제됩니다. 계약 기록이 없는 호실만 삭제할 수 있습니다.</p>
     </FormShell>
   )
 }

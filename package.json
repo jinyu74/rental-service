@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "setup-sheet": "node scripts/setup-sheet.mjs"
+    "setup-sheet": "node scripts/setup-sheet.mjs",
+    "typecheck": "next typegen && tsc --noEmit",
+    "prepare": "git config core.hooksPath .githooks || true",
+    "flow": "sh scripts/flow.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

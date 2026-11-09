@@ -45,6 +45,7 @@ export const mapBuilding = (r: Row): Building => ({
   name: str(r["건물명"]),
   address: str(r["주소"]),
   memo: str(r["메모"]),
+  row: r._row,
 })
 
 export const mapRoom = (r: Row): Room => ({
@@ -54,6 +55,7 @@ export const mapRoom = (r: Row): Room => ({
   floor: num(r["층"]),
   area: str(r["면적(㎡)"]) === "" ? null : num(r["면적(㎡)"]),
   memo: str(r["메모"]),
+  row: r._row,
 })
 
 export const mapContract = (r: Row): Contract => ({

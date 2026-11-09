@@ -1,0 +1,21 @@
+#!/bin/sh
+# 1) main·develop 직접 푸시·삭제 금지  2) 작업 브랜치 이름은 feature/ fix/ hotfix/ 로 시작
+# 정말 필요할 때만: ALLOW_PROTECTED_PUSH=1 git push ...
+[ "$ALLOW_PROTECTED_PUSH" = "1" ] && exit 0
+zero=0000000000000000000000000000000000000000
+while read -r local_ref local_sha remote_ref remote_sha; do
+  b=${remote_ref#refs/heads/}
+  case "$b" in
+    main|develop)
+      echo "✗ $b 로 직접 푸시하거나 삭제할 수 없습니다. 작업 브랜치에서 PR 하세요: pnpm flow pr"
+      exit 1 ;;
+  esac
+  [ "$local_sha" = "$zero" ] && continue   # 작업 브랜치 원격 삭제는 허용
+  case "$b" in
+    feature/*|fix/*|hotfix/*) ;;
+    *)
+      echo "✗ 브랜치 이름은 feature/ fix/ hotfix/ 로 시작해야 합니다 (현재: $b)."
+      exit 1 ;;
+  esac
+done
+exit 0
