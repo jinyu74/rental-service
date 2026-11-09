@@ -17,16 +17,11 @@ function newId(prefix: string) {
 }
 
 /**
- * 쓰기 작업 직렬화. 「읽고 → 검사하고 → 쓰기」가 같은 서버 안에서 서로 끼어들지 않게 한다.
- * 다른 서버 인스턴스와의 경합은 구글 시트에 트랜잭션이 없어 막을 수 없으므로, 쓰기 직전 행 ID 확인(STALE)으로 줄인다.
+ * 모든 쓰기는 저장소 트랜잭션 안에서 「읽고 → 검사하고 → 쓴다」.
+ * 구글 시트 모드에서는 시트 잠금(sheets-store 의 _lock 탭)으로 서버 인스턴스끼리도 겹치지 않는다.
  */
-const gw = globalThis as unknown as { __rentWriteChain?: Promise<unknown> }
 function exclusive<A extends unknown[]>(fn: (...a: A) => Promise<void>) {
-  return (...a: A): Promise<void> => {
-    const run = (gw.__rentWriteChain ?? Promise.resolve()).then(() => fn(...a))
-    gw.__rentWriteChain = run.catch(() => {})
-    return run
-  }
+  return (...a: A): Promise<void> => store().transaction(() => fn(...a))
 }
 
 export async function getData(): Promise<AppData> {

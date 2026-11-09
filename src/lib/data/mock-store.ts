@@ -2,7 +2,7 @@ import "server-only"
 import { pad, ymd } from "../format"
 import { SHEETS, type SheetKey, DEFAULT_BUILDINGS, defaultRooms } from "./schema"
 import { mapBuilding, mapContract, mapPayment, mapRoom, toObjects } from "./normalize"
-import { STALE, type Store, type Tables } from "./store"
+import { STALE, serialQueue, type Store, type Tables } from "./store"
 
 /**
  * 구글 시트 없이 화면을 확인하기 위한 메모리 저장소.
@@ -50,6 +50,8 @@ function seed(): Grid {
 
 const g = globalThis as unknown as { __rentMock?: Grid }
 const grid = () => (g.__rentMock ??= seed())
+// 메모리 저장소는 프로세스 하나에만 있으므로 프로세스 안 큐로 충분하다
+const mockQueue = serialQueue()
 
 export const mockStore: Store = {
   async readAll(): Promise<Tables> {
@@ -74,4 +76,5 @@ export const mockStore: Store = {
     if (String(grid()[key][row - 1]?.[0] ?? "") !== id) throw new Error(STALE)
     grid()[key].splice(row - 1, 1)
   },
+  transaction: (fn) => mockQueue(fn),
 }

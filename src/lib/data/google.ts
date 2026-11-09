@@ -66,6 +66,17 @@ async function accessToken() {
   return json.access_token
 }
 
+/** 구글 시트 API 오류. status·body 로 원인을 구분할 수 있다 */
+export class SheetsError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly body: string,
+  ) {
+    super(message)
+  }
+}
+
 export async function sheetsFetch<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const cfg = sheetsConfig()!
   const res = await fetch(`${API}/${cfg.sheetId}${path}`, {
@@ -75,9 +86,9 @@ export async function sheetsFetch<T = unknown>(path: string, init: RequestInit =
   })
   if (!res.ok) {
     const text = await res.text()
-    if (res.status === 403) throw new Error("시트 접근 권한이 없습니다. 시트를 서비스 계정 이메일과 편집자로 공유했는지 확인하세요.")
-    if (res.status === 404) throw new Error("시트를 찾을 수 없습니다. GOOGLE_SHEET_ID 를 확인하세요.")
-    throw new Error(`구글 시트 오류 (${res.status}): ${text.slice(0, 200)}`)
+    if (res.status === 403) throw new SheetsError("시트 접근 권한이 없습니다. 시트를 서비스 계정 이메일과 편집자로 공유했는지 확인하세요.", 403, text)
+    if (res.status === 404) throw new SheetsError("시트를 찾을 수 없습니다. GOOGLE_SHEET_ID 를 확인하세요.", 404, text)
+    throw new SheetsError(`구글 시트 오류 (${res.status}): ${text.slice(0, 200)}`, res.status, text)
   }
   return (await res.json()) as T
 }
