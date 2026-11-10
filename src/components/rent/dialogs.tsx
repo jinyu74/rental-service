@@ -31,6 +31,8 @@ import { useRent } from "./rent-app"
 
 /** 입력 이벤트가 나지 않는 선택 버튼(Seg 등)이 「작성 중」을 알리는 통로 */
 const DirtyCtx = createContext<() => void>(() => {})
+/** 입력창이 아닌 버튼으로 값을 바꿀 때 「작성 중」으로 표시하는 함수 (FormShell 안에서만 동작) */
+export const useMarkDirty = () => useContext(DirtyCtx)
 
 export function FormShell({
   title,

@@ -20,9 +20,9 @@ import { roomName } from "@/lib/billing"
 import { EXPENSE_ITEMS } from "@/lib/data/schema"
 import { depositOf, fixedStatus } from "@/lib/finance"
 import { dotDate, monthEnd, monthNum, won } from "@/lib/format"
-import type { ActionResult, DepositKind } from "@/lib/types"
+import type { ActionResult, DepositKind, QuickCost } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { Field, FormShell, MoneyInput, Seg, useSubmit } from "./dialogs"
+import { Field, FormShell, MoneyInput, Seg, useMarkDirty, useSubmit } from "./dialogs"
 import { useRent } from "./rent-app"
 
 /** 이 달에 기록할 때 기본 날짜: 이번 달이면 오늘, 아니면 그달 말일 */
@@ -152,24 +152,16 @@ export function ExpenseDialog({ id, buildingId: preset, quickId, onClose }: { id
           ))}
         </NativeSelect>
       </Field>
-      {quick.length > 0 && (
-        <div className="grid gap-1.5 sm:col-span-2">
-          <span className="text-xs font-medium text-muted-foreground">자주 쓰는 지출 (누르면 채워짐)</span>
-          <div className="flex flex-wrap gap-1.5">
-            {quick.map((x) => (
-              <Button key={x.id} type="button" size="sm" variant={item === x.item ? "secondary" : "outline"}
-                onClick={() => {
-                  setItem(x.item)
-                  if (x.amount > 0) setAmount(x.amount)
-                  if (x.memo) setMemo(x.memo)
-                }}>
-                {x.item}
-                {x.amount > 0 && <span className="num text-muted-foreground">{won(x.amount)}</span>}
-              </Button>
-            ))}
-          </div>
-        </div>
-      )}
+      <QuickFill
+        list={quick}
+        item={item}
+        onPick={(x) => {
+          // 태그 값으로 통째로 바꾼다: 금액 없는 태그는 금액을 비워 새로 입력받고, 메모도 이전 태그 것이 남지 않게
+          setItem(x.item)
+          setAmount(x.amount || "")
+          setMemo(x.memo)
+        }}
+      />
       <Field label="귀속월 (어느 달 지출로 볼지)" htmlFor="ex-m">
         <Input id="ex-m" type="month" className="h-10" value={m} onChange={(e) => setM(e.target.value)} />
       </Field>
@@ -187,6 +179,28 @@ export function ExpenseDialog({ id, buildingId: preset, quickId, onClose }: { id
         <Input id="ex-memo" className="h-10" placeholder="예: 302호 보일러 배관 수리" value={memo} onChange={(e) => setMemo(e.target.value)} />
       </Field>
     </FormShell>
+  )
+}
+
+function QuickFill({ list, item, onPick }: { list: QuickCost[]; item: string; onPick: (q: QuickCost) => void }) {
+  const markDirty = useMarkDirty()
+  if (!list.length) return null
+  return (
+    <div className="grid gap-1.5 sm:col-span-2">
+      <span className="text-xs font-medium text-muted-foreground">자주 쓰는 지출 (누르면 채워짐)</span>
+      <div className="flex flex-wrap gap-1.5">
+        {list.map((x) => (
+          <Button key={x.id} type="button" size="sm" variant={item === x.item ? "secondary" : "outline"}
+            onClick={() => {
+              onPick(x)
+              markDirty()
+            }}>
+            {x.item}
+            <span className="num text-muted-foreground">{x.amount > 0 ? won(x.amount) : "금액 입력"}</span>
+          </Button>
+        ))}
+      </div>
+    </div>
   )
 }
 
