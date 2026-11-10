@@ -3,14 +3,14 @@
 import { refresh } from "next/cache"
 import * as db from "@/lib/data"
 import { requireSession } from "@/lib/session"
-import type { ActionResult, BuildingInput, ContractInput, DepositInput, ExpenseInput, FixedCostInput, FixedRunInput, PaymentInput, RoomInput } from "@/lib/types"
+import type { ActionResult, BuildingInput, ContractInput, DepositInput, ExpenseInput, FixedCostInput, FixedRunInput, PaymentInput, QuickRunInput, RoomInput } from "@/lib/types"
 
-async function run<T>(fn: () => Promise<T>, message: string | ((r: T) => string)): Promise<ActionResult> {
+async function run<T>(fn: () => Promise<T>, message: string | ((r: T) => string), id?: (r: T) => string): Promise<ActionResult> {
   try {
     await requireSession()
     const r = await fn()
     refresh()
-    return { ok: true, message: typeof message === "string" ? message : message(r) }
+    return { ok: true, message: typeof message === "string" ? message : message(r), ...(id && { id: id(r) }) }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
@@ -74,6 +74,18 @@ export async function deleteFixedCostAction(id: string) {
 
 export async function recordFixedRunAction(r: FixedRunInput) {
   return run(() => db.recordFixedRun(r), (n) => `정기 지출 ${n}건을 기록했습니다.`)
+}
+
+export async function saveQuickCostAction(f: FixedCostInput) {
+  return run(() => db.saveQuickCost(f), f.id ? "자주 쓰는 항목을 수정했습니다." : "자주 쓰는 항목을 추가했습니다.")
+}
+
+export async function deleteQuickCostAction(id: string) {
+  return run(() => db.deleteQuickCost(id), "자주 쓰는 항목을 삭제했습니다.")
+}
+
+export async function recordQuickAction(q: QuickRunInput) {
+  return run(() => db.recordQuick(q), "지출을 기록했습니다.", (id) => id)
 }
 
 export async function reloadAction() {

@@ -22,11 +22,15 @@ export const SHEETS = {
     name: "정기지출",
     headers: ["정기항목ID", "건물ID", "항목", "기본금액", "메모"],
   },
+  quickCosts: {
+    name: "자주쓰는지출",
+    headers: ["빠른항목ID", "건물ID", "항목", "기본금액", "메모"],
+  },
 } as const
 
-/** 처음부터 있던 탭. 나중에 추가된 탭(보증금·지출·정기지출)은 없으면 빈 목록으로 읽고, 처음 쓸 때 만든다 */
+/** 처음부터 있던 탭. 나중에 추가된 탭(보증금·지출·정기지출·자주쓰는지출)은 없으면 빈 목록으로 읽고, 처음 쓸 때 만든다 */
 export const CORE_KEYS = ["buildings", "rooms", "contracts", "payments"] as const
-export const SHEET_KEYS = [...CORE_KEYS, "deposits", "expenses", "fixedCosts"] as const
+export const SHEET_KEYS = [...CORE_KEYS, "deposits", "expenses", "fixedCosts", "quickCosts"] as const
 
 /** 지출 항목 추천 목록 (직접 입력도 가능) */
 export const EXPENSE_ITEMS = ["공용전기", "수도", "청소", "인터넷+TV", "승강기 유지보수", "소방 점검", "수선·하자보수", "소모품", "세금·보험", "기타"]
