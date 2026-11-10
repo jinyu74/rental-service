@@ -1,5 +1,5 @@
 import { pad } from "../format"
-import type { Building, Contract, Payment, Room } from "../types"
+import type { Building, Contract, Deposit, DepositKind, Expense, FixedCost, Payment, Room } from "../types"
 
 export type Row = Record<string, unknown> & { _row: number }
 
@@ -85,5 +85,45 @@ export const mapPayment = (r: Row): Payment => ({
   method: str(r["방법"]),
   memo: str(r["메모"]),
   createdAt: str(r["기록일시"]),
+  row: r._row,
+})
+
+const DEPOSIT_KINDS: DepositKind[] = ["계약금", "잔금", "반환"]
+
+export const mapDeposit = (r: Row): Deposit => {
+  const kind = str(r["구분"]) as DepositKind
+  return {
+    id: str(r["보증금ID"]),
+    contractId: str(r["계약ID"]),
+    roomId: str(r["호실ID"]),
+    kind: DEPOSIT_KINDS.includes(kind) ? kind : "잔금",
+    amount: Math.abs(num(r["금액"])),
+    date: normDate(r["일자"]),
+    method: str(r["방법"]),
+    memo: str(r["메모"]),
+    createdAt: str(r["기록일시"]),
+    row: r._row,
+  }
+}
+
+export const mapExpense = (r: Row): Expense => ({
+  id: str(r["지출ID"]),
+  buildingId: str(r["건물ID"]),
+  month: normMonth(r["귀속월"]),
+  item: str(r["항목"]),
+  amount: num(r["금액"]),
+  date: normDate(r["지출일"]),
+  memo: str(r["메모"]),
+  fixedId: str(r["정기항목ID"]),
+  createdAt: str(r["기록일시"]),
+  row: r._row,
+})
+
+export const mapFixedCost = (r: Row): FixedCost => ({
+  id: str(r["정기항목ID"]),
+  buildingId: str(r["건물ID"]),
+  item: str(r["항목"]),
+  amount: num(r["기본금액"]),
+  memo: str(r["메모"]),
   row: r._row,
 })

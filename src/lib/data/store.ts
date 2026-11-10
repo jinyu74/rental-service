@@ -1,4 +1,4 @@
-import type { Building, Contract, Payment, Room } from "../types"
+import type { Building, Contract, Deposit, Expense, FixedCost, Payment, Room } from "../types"
 import type { SheetKey } from "./schema"
 
 export interface Tables {
@@ -6,12 +6,16 @@ export interface Tables {
   rooms: Room[]
   contracts: Contract[]
   payments: Payment[]
+  deposits: Deposit[]
+  expenses: Expense[]
+  fixedCosts: FixedCost[]
 }
 
 /** 시트 한 장처럼 동작하는 저장소. 구글 시트와 메모리(미리보기) 두 가지 구현이 있습니다. */
 export interface Store {
   readAll(): Promise<Tables>
-  append(key: SheetKey, row: (string | number)[]): Promise<void>
+  /** 행 여러 개를 한 번에 맨 아래에 붙인다 */
+  append(key: SheetKey, rows: (string | number)[][]): Promise<void>
   /** row 행의 첫 열(ID)이 id 와 같을 때만 쓴다. 다르면 STALE 오류 (그사이 행이 밀린 경우) */
   updateCells(key: SheetKey, row: number, id: string, fromHeader: string, values: (string | number)[]): Promise<void>
   deleteRow(key: SheetKey, row: number, id: string): Promise<void>

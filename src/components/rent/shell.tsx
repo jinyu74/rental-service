@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { createContext, useContext, useState, useTransition, type ReactNode } from "react"
-import { Building2, LayoutDashboard, LogOut, ReceiptText, RefreshCw } from "lucide-react"
+import { Building2, LayoutDashboard, LogOut, ReceiptText, RefreshCw, Wallet } from "lucide-react"
 import { toast } from "sonner"
 import { reloadAction } from "@/app/actions"
 import { logout } from "@/app/login/actions"
@@ -14,6 +14,7 @@ const NAV = [
   { href: "/", label: "대시보드", short: "홈", icon: LayoutDashboard },
   { href: "/units", label: "호실·계약", short: "호실", icon: Building2 },
   { href: "/payments", label: "수납 내역", short: "수납", icon: ReceiptText },
+  { href: "/expenses", label: "지출", short: "지출", icon: Wallet },
 ] as const
 
 interface SyncInfo {
@@ -95,7 +96,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <main className="mx-auto max-w-7xl px-4 pt-5 pb-28 md:px-6 md:pt-8 md:pb-16">{children}</main>
 
       <nav
-        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
         aria-label="하단 메뉴"
       >
         {NAV.map((n) => (

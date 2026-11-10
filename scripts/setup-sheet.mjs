@@ -1,6 +1,6 @@
 // 구글 시트 초기 설정: node scripts/setup-sheet.mjs   (pnpm setup-sheet)
-// - 「건물·호실·계약·수납내역」 탭과 머리글을 만들고, 날짜·ID 열을 텍스트 형식으로 지정
-// - 유형(월세/전세)·상태(진행/종료) 드롭다운 추가, 시간대를 Asia/Seoul 로 설정
+// - 「건물·호실·계약·수납내역·보증금내역·지출내역·정기지출」 탭과 머리글을 만들고, 날짜·ID 열을 텍스트 형식으로 지정
+// - 유형(월세/전세)·상태(진행/종료)·보증금 구분(계약금/잔금/반환) 드롭다운 추가, 시간대를 Asia/Seoul 로 설정
 // - 건물·호실 탭이 비어 있으면 춘천 13실·시흥 19실(예시 호수)을 넣음
 // 이미 있는 데이터는 지우지 않습니다. 여러 번 실행해도 안전합니다.
 import { existsSync } from "node:fs"
@@ -25,6 +25,17 @@ const SHEETS = {
     headers: ["수납ID", "계약ID", "호실ID", "청구월", "입금액", "입금일", "방법", "메모", "기록일시"],
     text: ["수납ID", "계약ID", "호실ID", "청구월", "입금일"],
   },
+  deposits: {
+    name: "보증금내역",
+    headers: ["보증금ID", "계약ID", "호실ID", "구분", "금액", "일자", "방법", "메모", "기록일시"],
+    text: ["보증금ID", "계약ID", "호실ID", "일자"],
+  },
+  expenses: {
+    name: "지출내역",
+    headers: ["지출ID", "건물ID", "귀속월", "항목", "금액", "지출일", "메모", "정기항목ID", "기록일시"],
+    text: ["지출ID", "건물ID", "귀속월", "지출일", "정기항목ID"],
+  },
+  fixedCosts: { name: "정기지출", headers: ["정기항목ID", "건물ID", "항목", "기본금액", "메모"], text: ["정기항목ID", "건물ID"] },
 }
 const LAYOUT = [
   ["CC", "춘천건물", { 1: 3, 2: 5, 3: 5 }],
@@ -92,12 +103,11 @@ for (const s of Object.values(SHEETS)) {
     }),
   )
 }
-const cid = sid(SHEETS.contracts.name)
-const list = (header, values) => {
-  const c = SHEETS.contracts.headers.indexOf(header)
-  return { setDataValidation: { range: { sheetId: cid, startRowIndex: 1, startColumnIndex: c, endColumnIndex: c + 1 }, rule: { condition: { type: "ONE_OF_LIST", values: values.map((v) => ({ userEnteredValue: v })) }, strict: true, showCustomUi: true } } }
+const list = (header, values, sheet = SHEETS.contracts) => {
+  const c = sheet.headers.indexOf(header)
+  return { setDataValidation: { range: { sheetId: sid(sheet.name), startRowIndex: 1, startColumnIndex: c, endColumnIndex: c + 1 }, rule: { condition: { type: "ONE_OF_LIST", values: values.map((v) => ({ userEnteredValue: v })) }, strict: true, showCustomUi: true } } }
 }
-requests.push(list("유형", ["월세", "전세"]), list("상태", ["진행", "종료"]))
+requests.push(list("유형", ["월세", "전세"]), list("상태", ["진행", "종료"]), list("구분", ["계약금", "잔금", "반환"], SHEETS.deposits))
 await api(":batchUpdate", { method: "POST", body: JSON.stringify({ requests }) })
 console.log("✓ 머리글·텍스트 형식·드롭다운 설정")
 

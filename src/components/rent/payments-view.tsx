@@ -17,6 +17,8 @@ export function PaymentsView() {
     .filter((p) => p.month === month)
     .sort((a, b) => (b.date + b.createdAt).localeCompare(a.date + a.createdAt))
   const total = list.reduce((a, p) => a + p.amount, 0)
+  // 보증금은 청구월이 없으므로 입금·반환일이 이 달인 기록
+  const deps = data.deposits.filter((d) => d.date.startsWith(month)).sort((a, b) => (b.date + b.createdAt).localeCompare(a.date + a.createdAt))
 
   return (
     <>
@@ -62,6 +64,43 @@ export function PaymentsView() {
             })
           ) : (
             <Empty>{mm}월분 수납 기록이 없습니다.</Empty>
+          )}
+        </CardContent>
+      </Card>
+
+      <h2 className="mt-8 mb-2 text-lg font-semibold">
+        {mm}월 보증금 입금·반환 <span className="ml-1 text-xs font-normal text-muted-foreground">입금·반환일 기준 · 수익에 포함하지 않음</span>
+      </h2>
+      <Card className="py-1">
+        <CardContent className="divide-y">
+          {deps.length ? (
+            deps.map((d) => {
+              const r = roomOf.get(d.roomId)
+              const c = cOf.get(d.contractId)
+              return (
+                <div key={d.id} className="flex items-center gap-3 py-3">
+                  <button type="button" onClick={() => openRoom(d.roomId)} className="min-w-0 flex-1 text-left focus-visible:outline-none">
+                    <div className="truncate text-sm font-semibold">
+                      {r ? roomName(r) : d.roomId} · {c?.tenant ?? ""}
+                    </div>
+                    <div className="num truncate text-xs text-muted-foreground">
+                      {d.kind} · {dotDate(d.date)} · {d.method}
+                      {d.memo ? ` · ${d.memo}` : ""}
+                    </div>
+                  </button>
+                  <span className={`num text-sm font-semibold whitespace-nowrap ${d.kind === "반환" ? "text-bad" : ""}`}>
+                    {d.kind === "반환" ? "−" : ""}
+                    {won(d.amount)}
+                  </span>
+                  <Button variant="ghost" size="icon-sm" onClick={() => openDialog({ kind: "deleteDeposit", id: d.id })}
+                    aria-label={`${dotDate(d.date)} 보증금 ${d.kind} ${won(d.amount)} 기록 삭제`}>
+                    <Trash2 />
+                  </Button>
+                </div>
+              )
+            })
+          ) : (
+            <Empty>{mm}월 보증금 기록이 없습니다.</Empty>
           )}
         </CardContent>
       </Card>
