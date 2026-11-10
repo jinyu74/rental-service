@@ -33,7 +33,31 @@ export interface Contract {
   end: string // YYYY-MM-DD
   status: ContractStatus
   memo: string
+  createdAt: string
+  /** 「중개소」 탭의 ID (직거래면 빈칸) */
+  brokerId: string
+  /** 저장할 때의 중개소 이름 (시트에서 읽기 쉽게 같이 적어 둠). 화면은 brokerId 로 찾은 현재 이름을 우선 쓴다 */
+  brokerName: string
+  /** 임대인이 낸 중개수수료 */
+  brokerFee: number
   row: number
+}
+
+export interface Broker {
+  id: string
+  name: string
+  phone: string
+  address: string
+  memo: string
+  row: number
+}
+
+export interface BrokerInput {
+  id?: string
+  name: string
+  phone: string
+  address: string
+  memo: string
 }
 
 export interface Payment {
@@ -101,6 +125,7 @@ export interface AppData {
   expenses: Expense[]
   fixedCosts: FixedCost[]
   quickCosts: QuickCost[]
+  brokers: Broker[]
   today: string
   sheetUrl: string | null
   syncedAt: string
@@ -129,6 +154,10 @@ export interface ContractInput {
   start: string
   end: string
   memo: string
+  /** 목록에서 고른 중개소. 비우고 newBroker 를 주면 계약 저장 때 중개소도 새로 등록한다 */
+  brokerId: string
+  newBroker?: { name: string; phone: string }
+  brokerFee: number
 }
 
 export type ActionResult = { ok: true; message: string; id?: string } | { ok: false; error: string }

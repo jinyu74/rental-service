@@ -1,7 +1,7 @@
 import "server-only"
 import { pad, ymd } from "../format"
 import { SHEETS, type SheetKey, DEFAULT_BUILDINGS, defaultRooms } from "./schema"
-import { mapBuilding, mapContract, mapDeposit, mapExpense, mapFixedCost, mapPayment, mapQuickCost, mapRoom, toObjects } from "./normalize"
+import { mapBuilding, mapContract, mapDeposit, mapExpense, mapFixedCost, mapPayment, mapQuickCost, mapBroker, mapRoom, toObjects } from "./normalize"
 import { STALE, serialQueue, type Store, type Tables } from "./store"
 
 /**
@@ -22,6 +22,7 @@ function seed(): Grid {
     expenses: [SHEETS.expenses.headers.slice()],
     fixedCosts: [SHEETS.fixedCosts.headers.slice()],
     quickCosts: [SHEETS.quickCosts.headers.slice()],
+    brokers: [SHEETS.brokers.headers.slice()],
   }
   const names = ["김민준", "이서연", "박지호", "최유진", "정하늘", "강도윤", "윤서아", "임준서", "한지민", "오세훈", "서지우", "신예린", "조현우", "배수빈", "문태양", "장예준", "홍다은", "유시우", "노하린", "권도현", "송민서", "안지후", "류채원", "전우진", "고은채", "남건우", "황서윤", "차민재", "표하은"]
   const vacant = ["CC-203", "SH-205", "SH-404"]
@@ -75,6 +76,12 @@ function seed(): Grid {
   const lm = new Date(today.getFullYear(), today.getMonth() - 1, 1)
   g.expenses.push(["E-R1", "SH", ymd(lm).slice(0, 7), "수선·하자보수", 380000, ymd(new Date(lm.getFullYear(), lm.getMonth(), 14)), "302호 보일러 배관 누수 수리", "", ""])
   g.expenses.push(["E-R2", "CC", ymd(today).slice(0, 7), "수선·하자보수", 95000, ymd(today), "공용 복도 전등 교체", "", ""])
+  // 중개소 2곳, 일부 계약은 중개소를 통해 계약 (나머지는 예전 계약처럼 중개 정보 없음)
+  g.brokers.push(["BK-1", "한빛공인중개사", "033-000-1111", "춘천시 중앙로 1", ""], ["BK-2", "시흥온누리부동산", "031-000-2222", "", "소장 김OO"])
+  g.contracts.slice(1).forEach((row, i) => {
+    if (i % 5 === 1) row.push("한빛공인중개사", 400000, "BK-1")
+    else if (i % 5 === 2) row.push("시흥온누리부동산", 550000, "BK-2")
+  })
   // 자주 쓰는 지출 (배관수리는 금액이 매번 달라 0)
   g.quickCosts.push(["Q-CC-1", "CC", "소모품", 30000, "전구 교체"], ["Q-CC-2", "CC", "수선·하자보수", 0, ""], ["Q-SH-1", "SH", "소방 점검", 120000, "분기 점검"])
   return g
@@ -97,6 +104,7 @@ export const mockStore: Store = {
       expenses: toObjects(d.expenses).map(mapExpense),
       fixedCosts: toObjects(d.fixedCosts).map(mapFixedCost),
       quickCosts: toObjects(d.quickCosts).map(mapQuickCost),
+      brokers: toObjects(d.brokers).map(mapBroker),
     }
   },
   async append(key, rows) {

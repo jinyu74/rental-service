@@ -1,4 +1,4 @@
-import type { Building, Contract, Deposit, Expense, FixedCost, Payment, QuickCost, Room } from "../types"
+import type { Broker, Building, Contract, Deposit, Expense, FixedCost, Payment, QuickCost, Room } from "../types"
 import type { SheetKey } from "./schema"
 
 export interface Tables {
@@ -10,6 +10,7 @@ export interface Tables {
   expenses: Expense[]
   fixedCosts: FixedCost[]
   quickCosts: QuickCost[]
+  brokers: Broker[]
 }
 
 /** 시트 한 장처럼 동작하는 저장소. 구글 시트와 메모리(미리보기) 두 가지 구현이 있습니다. */

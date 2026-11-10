@@ -1,6 +1,6 @@
 import "server-only"
 import { seoulNow } from "../format"
-import type { AppData, BuildingInput, ContractInput, DepositInput, ExpenseInput, FixedCostInput, FixedRunInput, PaymentInput, QuickRunInput, RoomInput } from "../types"
+import type { AppData, BrokerInput, BuildingInput, ContractInput, DepositInput, ExpenseInput, FixedCostInput, FixedRunInput, PaymentInput, QuickRunInput, RoomInput } from "../types"
 import { sheetUrl, sheetsConfig } from "./google"
 import { mockStore } from "./mock-store"
 import { sheetsStore } from "./sheets-store"
@@ -66,21 +66,39 @@ async function _saveContract(c: ContractInput) {
   const payDay = Math.min(31, Math.max(1, Math.round(c.payDay) || 1))
   const rent = c.type === "전세" ? 0 : c.rent
 
-  const { contracts, rooms } = await store().readAll()
+  const { contracts, rooms, brokers } = await store().readAll()
   if (!rooms.some((r) => r.id === c.roomId)) throw new Error("호실을 찾을 수 없습니다.")
   const overlap = contracts.find(
     (x) => x.roomId === c.roomId && x.status === "진행" && x.id !== (c.id ?? "") && x.start <= c.end && x.end >= c.start,
   )
   if (overlap) throw new Error(`같은 기간에 진행 중인 계약(${overlap.tenant})이 있습니다. 기존 계약을 먼저 종료하세요.`)
 
+  // 중개소: 목록에서 고르거나, 새 이름이면 「중개소」 탭에 먼저 등록한다(같은 이름이 이미 있으면 그걸 쓴다)
+  const brokerFee = Math.round(Number(c.brokerFee) || 0)
+  if (brokerFee < 0) throw new Error("중개수수료를 확인하세요.")
+  let broker: { id: string; name: string } | null = null
+  const newName = c.newBroker?.name.trim() ?? ""
+  if (c.brokerId) {
+    broker = brokers.find((b) => b.id === c.brokerId) ?? null
+    if (!broker) throw new Error("중개소를 찾을 수 없습니다. 새로고침 후 다시 선택하세요.")
+  } else if (newName) {
+    broker = brokers.find((b) => sameName(b.name, newName)) ?? null
+    if (!broker) {
+      broker = { id: newId("BK", new Set(brokers.map((b) => b.id))), name: newName }
+      await store().append("brokers", [[broker.id, newName, c.newBroker!.phone.trim(), "", ""]])
+    }
+  }
+  if (brokerFee > 0 && !broker) throw new Error("중개수수료가 있으면 중개소를 선택하세요.")
   const values = [c.roomId, c.tenant.trim(), c.phone.trim(), c.type, c.deposit, rent, c.fee, payDay, c.start, c.end]
+  const brokerValues = broker ? [broker.name, brokerFee, broker.id] : ["", 0, ""]
   if (c.id) {
     const hit = contracts.find((x) => x.id === c.id)
     if (!hit) throw new Error("계약을 찾을 수 없습니다.")
-    await store().updateCells("contracts", hit.row, hit.id, "호실ID", [...values, hit.status, c.memo])
+    // 등록일시는 그대로 다시 써서 중개 정보 열까지 한 번에 고친다
+    await store().updateCells("contracts", hit.row, hit.id, "호실ID", [...values, hit.status, c.memo, hit.createdAt, ...brokerValues])
     return
   }
-  await store().append("contracts", [[newId("C"), ...values, "진행", c.memo, seoulNow().stamp]])
+  await store().append("contracts", [[newId("C"), ...values, "진행", c.memo, seoulNow().stamp, ...brokerValues]])
 }
 
 async function _endContract(id: string, end: string) {
@@ -90,6 +108,36 @@ async function _endContract(id: string, end: string) {
   if (!hit) throw new Error("계약을 찾을 수 없습니다.")
   if (end < hit.start) throw new Error("퇴실일이 계약 시작일보다 빠릅니다.")
   await store().updateCells("contracts", hit.row, hit.id, "종료일", [end, "종료"])
+}
+
+/* ───────── 중개소 ───────── */
+
+/** 띄어쓰기만 다른 이름(「한빛 공인중개사」·「한빛공인중개사」)은 같은 중개소로 본다 */
+const sameName = (a: string, b: string) => a.replace(/\s+/g, "") === b.replace(/\s+/g, "")
+
+async function _saveBroker(b: BrokerInput) {
+  const name = b.name.trim()
+  if (!name) throw new Error("중개소 이름을 입력하세요.")
+  const { brokers } = await store().readAll()
+  const dup = brokers.find((x) => sameName(x.name, name) && x.id !== b.id)
+  if (dup) throw new Error(`「${dup.name}」 중개소가 이미 있습니다.`)
+  const values = [name, b.phone.trim(), b.address.trim(), b.memo.trim()]
+  if (b.id) {
+    const hit = brokers.find((x) => x.id === b.id)
+    if (!hit) throw new Error("중개소를 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
+    await store().updateCells("brokers", hit.row, hit.id, "이름", values)
+    return
+  }
+  await store().append("brokers", [[newId("BK", new Set(brokers.map((x) => x.id))), ...values]])
+}
+
+async function _deleteBroker(id: string) {
+  const { brokers, contracts } = await store().readAll()
+  const hit = brokers.find((x) => x.id === id)
+  if (!hit) throw new Error("중개소를 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
+  const n = contracts.filter((c) => c.brokerId === id).length
+  if (n) throw new Error(`이 중개소로 맺은 계약이 ${n}건 있어 삭제할 수 없습니다.`)
+  await store().deleteRow("brokers", hit.row, hit.id)
 }
 
 /* ───────── 건물 ───────── */
@@ -323,5 +371,7 @@ export const saveFixedCost = exclusive(_saveFixedCost)
 export const deleteFixedCost = exclusive(_deleteFixedCost)
 export const saveQuickCost = exclusive(_saveQuickCost)
 export const deleteQuickCost = exclusive(_deleteQuickCost)
+export const saveBroker = exclusive(_saveBroker)
+export const deleteBroker = exclusive(_deleteBroker)
 export const recordQuick = (q: QuickRunInput) => store().transaction(() => _recordQuick(q))
 export const recordFixedRun = (run: FixedRunInput) => store().transaction(() => _recordFixedRun(run))

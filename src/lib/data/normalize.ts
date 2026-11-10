@@ -1,5 +1,5 @@
 import { pad } from "../format"
-import type { Building, Contract, Deposit, DepositKind, Expense, FixedCost, Payment, Room } from "../types"
+import type { Broker, Building, Contract, Deposit, DepositKind, Expense, FixedCost, Payment, Room } from "../types"
 
 export type Row = Record<string, unknown> & { _row: number }
 
@@ -72,6 +72,10 @@ export const mapContract = (r: Row): Contract => ({
   end: normDate(r["종료일"]),
   status: str(r["상태"]) === "종료" ? "종료" : "진행",
   memo: str(r["메모"]),
+  createdAt: str(r["등록일시"]),
+  brokerId: str(r["중개소ID"]),
+  brokerName: str(r["중개소"]),
+  brokerFee: num(r["중개수수료"]),
   row: r._row,
 })
 
@@ -116,6 +120,15 @@ export const mapExpense = (r: Row): Expense => ({
   memo: str(r["메모"]),
   fixedId: str(r["정기항목ID"]),
   createdAt: str(r["기록일시"]),
+  row: r._row,
+})
+
+export const mapBroker = (r: Row): Broker => ({
+  id: str(r["중개소ID"]),
+  name: str(r["이름"]),
+  phone: str(r["연락처"]),
+  address: str(r["주소"]),
+  memo: str(r["메모"]),
   row: r._row,
 })
 
