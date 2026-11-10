@@ -322,6 +322,13 @@ export function ContractDialog({ id, roomId: presetRoom, onClose }: { id?: strin
   const [start, setStart] = useState(start0)
   const [end, setEnd] = useState(editing?.end ?? ymd(new Date(s0.getFullYear() + 2, s0.getMonth(), s0.getDate() - 1)))
   const [memo, setMemo] = useState(editing?.memo ?? "")
+  // 중개: "" 직거래, NEW 새 중개소 입력, 그 외 중개소ID. 목록에서 지워진 중개소의 옛 계약은 그 ID 를 그대로 유지
+  const [brokerSel, setBrokerSel] = useState(editing?.brokerId ?? "")
+  const [newBrokerName, setNewBrokerName] = useState("")
+  const [newBrokerPhone, setNewBrokerPhone] = useState("")
+  const [brokerFee, setBrokerFee] = useState<number | "">(editing?.brokerFee || "")
+  const brokers = [...data.brokers].sort((a, b) => a.name.localeCompare(b.name, "ko"))
+  const orphan = editing?.brokerId && !data.brokers.some((b) => b.id === editing.brokerId) ? editing : undefined
   const { pending, error, run } = useSubmit(onClose)
 
   return (
@@ -348,6 +355,9 @@ export function ContractDialog({ id, roomId: presetRoom, onClose }: { id?: strin
             start,
             end,
             memo,
+            brokerId: brokerSel === NEW_BROKER ? "" : brokerSel,
+            newBroker: brokerSel === NEW_BROKER ? { name: newBrokerName, phone: newBrokerPhone } : undefined,
+            brokerFee: brokerSel ? brokerFee || 0 : 0,
           }),
         )
       }
@@ -399,12 +409,44 @@ export function ContractDialog({ id, roomId: presetRoom, onClose }: { id?: strin
       <Field label="종료일" htmlFor="ct-e">
         <Input id="ct-e" type="date" className="h-10" value={end} onChange={(e) => setEnd(e.target.value)} />
       </Field>
+      <Field label="중개소" htmlFor="ct-bk">
+        <NativeSelect id="ct-bk" className="w-full" value={brokerSel} onChange={(e) => setBrokerSel(e.target.value)}>
+          <NativeSelectOption value="">직거래 (중개소 없음)</NativeSelectOption>
+          {brokers.map((b) => (
+            <NativeSelectOption key={b.id} value={b.id}>
+              {b.name}
+            </NativeSelectOption>
+          ))}
+          {orphan && <NativeSelectOption value={orphan.brokerId}>{orphan.brokerName} (목록에서 삭제됨)</NativeSelectOption>}
+          <NativeSelectOption value={NEW_BROKER}>+ 새 중개소 입력</NativeSelectOption>
+        </NativeSelect>
+      </Field>
+      {brokerSel ? (
+        <Field label="중개수수료 (원, 임대인 부담분)" htmlFor="ct-bkfee">
+          <MoneyInput id="ct-bkfee" value={brokerFee} onChange={setBrokerFee} />
+        </Field>
+      ) : (
+        <div className="hidden sm:block" />
+      )}
+      {brokerSel === NEW_BROKER && (
+        <>
+          <Field label="새 중개소 이름" htmlFor="ct-bkn">
+            <Input id="ct-bkn" className="h-10" autoComplete="off" placeholder="예: 한빛공인중개사" value={newBrokerName} onChange={(e) => setNewBrokerName(e.target.value)} />
+          </Field>
+          <Field label="중개소 연락처" htmlFor="ct-bkp">
+            <Input id="ct-bkp" type="tel" className="h-10" placeholder="033-000-0000" value={newBrokerPhone} onChange={(e) => setNewBrokerPhone(e.target.value)} />
+          </Field>
+          <p className="-mt-1 text-xs text-muted-foreground sm:col-span-2">계약을 저장할 때 중개소 목록에도 함께 등록됩니다.</p>
+        </>
+      )}
       <Field label="메모 (선택)" htmlFor="ct-memo" full>
         <Textarea id="ct-memo" value={memo} onChange={(e) => setMemo(e.target.value)} />
       </Field>
     </FormShell>
   )
 }
+
+const NEW_BROKER = "__new"
 
 /* ───────── 계약 종료 ───────── */
 

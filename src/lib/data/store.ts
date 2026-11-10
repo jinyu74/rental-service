@@ -1,4 +1,4 @@
-import type { Building, Contract, Deposit, Expense, FixedCost, Payment, QuickCost, Room } from "../types"
+import type { Broker, Building, Contract, Deposit, Expense, FixedCost, Payment, QuickCost, Room } from "../types"
 import type { SheetKey } from "./schema"
 
 export interface Tables {
@@ -10,6 +10,7 @@ export interface Tables {
   expenses: Expense[]
   fixedCosts: FixedCost[]
   quickCosts: QuickCost[]
+  brokers: Broker[]
 }
 
 /** 시트 한 장처럼 동작하는 저장소. 구글 시트와 메모리(미리보기) 두 가지 구현이 있습니다. */
@@ -17,12 +18,19 @@ export interface Store {
   readAll(): Promise<Tables>
   /** 행 여러 개를 한 번에 맨 아래에 붙인다 */
   append(key: SheetKey, rows: (string | number)[][]): Promise<void>
-  /** row 행의 첫 열(ID)이 id 와 같을 때만 쓴다. 다르면 STALE 오류 (그사이 행이 밀린 경우) */
-  updateCells(key: SheetKey, row: number, id: string, fromHeader: string, values: (string | number)[]): Promise<void>
+  /**
+   * row 행의 첫 열(ID)이 id 와 같을 때만 쓴다. 다르면 STALE 오류 (그사이 행이 밀린 경우).
+   * fromHeader 열부터 values 를 쓰고, more 로 떨어진 다른 구간(그사이 열은 건드리지 않음)도 한 번에 쓴다
+   */
+  updateCells(key: SheetKey, row: number, id: string, fromHeader: string, values: Cells, more?: Segment[]): Promise<void>
   deleteRow(key: SheetKey, row: number, id: string): Promise<void>
   /** fn 을 다른 쓰기와 겹치지 않게 실행한다. 「읽기 → 검사 → 쓰기」 전체를 이 안에서 한다 */
   transaction<T>(fn: () => Promise<T>): Promise<T>
 }
+
+export type Cells = (string | number)[]
+/** [시작 머리글, 값들] */
+export type Segment = [string, Cells]
 
 export const STALE = "시트 내용이 그사이 바뀌었습니다. 새로고침 후 다시 시도하세요."
 

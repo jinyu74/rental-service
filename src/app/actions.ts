@@ -3,7 +3,7 @@
 import { refresh } from "next/cache"
 import * as db from "@/lib/data"
 import { requireSession } from "@/lib/session"
-import type { ActionResult, BuildingInput, ContractInput, DepositInput, ExpenseInput, FixedCostInput, FixedRunInput, PaymentInput, QuickRunInput, RoomInput } from "@/lib/types"
+import type { ActionResult, BrokerInput, BuildingInput, ContractInput, DepositInput, ExpenseInput, FixedCostInput, FixedRunInput, PaymentInput, QuickRunInput, RoomInput } from "@/lib/types"
 
 async function run<T>(fn: () => Promise<T>, message: string | ((r: T) => string), id?: (r: T) => string): Promise<ActionResult> {
   try {
@@ -86,6 +86,14 @@ export async function deleteQuickCostAction(id: string) {
 
 export async function recordQuickAction(q: QuickRunInput) {
   return run(() => db.recordQuick(q), "지출을 기록했습니다.", (id) => id)
+}
+
+export async function saveBrokerAction(b: BrokerInput) {
+  return run(() => db.saveBroker(b), b.id ? "중개소 정보를 수정했습니다." : "중개소를 추가했습니다.")
+}
+
+export async function deleteBrokerAction(id: string) {
+  return run(() => db.deleteBroker(id), "중개소를 삭제했습니다.")
 }
 
 export async function reloadAction() {
