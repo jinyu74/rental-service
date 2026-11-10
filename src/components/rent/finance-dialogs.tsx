@@ -6,10 +6,12 @@ import {
   deleteDepositAction,
   deleteExpenseAction,
   deleteFixedCostAction,
+  deleteQuickCostAction,
   recordDepositAction,
   recordFixedRunAction,
   saveExpenseAction,
   saveFixedCostAction,
+  saveQuickCostAction,
 } from "@/app/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,13 +20,13 @@ import { roomName } from "@/lib/billing"
 import { EXPENSE_ITEMS } from "@/lib/data/schema"
 import { depositOf, fixedStatus } from "@/lib/finance"
 import { dotDate, monthEnd, monthNum, won } from "@/lib/format"
-import type { ActionResult, DepositKind } from "@/lib/types"
+import type { ActionResult, DepositKind, QuickCost } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { Field, FormShell, MoneyInput, Seg, useSubmit } from "./dialogs"
+import { Field, FormShell, MoneyInput, Seg, useMarkDirty, useSubmit } from "./dialogs"
 import { useRent } from "./rent-app"
 
 /** 이 달에 기록할 때 기본 날짜: 이번 달이면 오늘, 아니면 그달 말일 */
-const defaultDate = (today: string, month: string) => (today.startsWith(month) ? today : monthEnd(month))
+export const defaultDate = (today: string, month: string) => (today.startsWith(month) ? today : monthEnd(month))
 
 function ItemList() {
   return (
@@ -118,16 +120,18 @@ export function DepositDialog({ contractId, refund, onClose }: { contractId: str
 
 /* ───────── 지출 기록 / 수정 ───────── */
 
-export function ExpenseDialog({ id, buildingId: preset, onClose }: { id?: string; buildingId?: string; onClose: () => void }) {
+export function ExpenseDialog({ id, buildingId: preset, quickId, onClose }: { id?: string; buildingId?: string; quickId?: string; onClose: () => void }) {
   const { data, month } = useRent()
   const editing = id ? data.expenses.find((e) => e.id === id) : undefined
-  const [buildingId, setBuildingId] = useState(editing?.buildingId ?? preset ?? data.buildings[0]?.id ?? "")
+  const q = quickId ? data.quickCosts.find((x) => x.id === quickId) : undefined
+  const [buildingId, setBuildingId] = useState(editing?.buildingId ?? q?.buildingId ?? preset ?? data.buildings[0]?.id ?? "")
   const [m, setM] = useState(editing?.month ?? month)
-  const [item, setItem] = useState(editing?.item ?? "")
-  const [amount, setAmount] = useState<number | "">(editing?.amount ?? "")
+  const [item, setItem] = useState(editing?.item ?? q?.item ?? "")
+  const [amount, setAmount] = useState<number | "">(editing?.amount ?? (q?.amount || ""))
   const [date, setDate] = useState(editing?.date ?? defaultDate(data.today, month))
-  const [memo, setMemo] = useState(editing?.memo ?? "")
+  const [memo, setMemo] = useState(editing?.memo ?? q?.memo ?? "")
   const { pending, error, run } = useSubmit(onClose)
+  const quick = editing ? [] : data.quickCosts.filter((x) => x.buildingId === buildingId)
 
   return (
     <FormShell
@@ -148,6 +152,16 @@ export function ExpenseDialog({ id, buildingId: preset, onClose }: { id?: string
           ))}
         </NativeSelect>
       </Field>
+      <QuickFill
+        list={quick}
+        item={item}
+        onPick={(x) => {
+          // 태그 값으로 통째로 바꾼다: 금액 없는 태그는 금액을 비워 새로 입력받고, 메모도 이전 태그 것이 남지 않게
+          setItem(x.item)
+          setAmount(x.amount || "")
+          setMemo(x.memo)
+        }}
+      />
       <Field label="귀속월 (어느 달 지출로 볼지)" htmlFor="ex-m">
         <Input id="ex-m" type="month" className="h-10" value={m} onChange={(e) => setM(e.target.value)} />
       </Field>
@@ -156,7 +170,7 @@ export function ExpenseDialog({ id, buildingId: preset, onClose }: { id?: string
         <ItemList />
       </Field>
       <Field label="금액 (원)" htmlFor="ex-a">
-        <MoneyInput id="ex-a" value={amount} onChange={setAmount} />
+        <MoneyInput id="ex-a" value={amount} onChange={setAmount} autoFocus={!!q && !q.amount} />
       </Field>
       <Field label="지출일" htmlFor="ex-d">
         <Input id="ex-d" type="date" className="h-10" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -165,6 +179,28 @@ export function ExpenseDialog({ id, buildingId: preset, onClose }: { id?: string
         <Input id="ex-memo" className="h-10" placeholder="예: 302호 보일러 배관 수리" value={memo} onChange={(e) => setMemo(e.target.value)} />
       </Field>
     </FormShell>
+  )
+}
+
+function QuickFill({ list, item, onPick }: { list: QuickCost[]; item: string; onPick: (q: QuickCost) => void }) {
+  const markDirty = useMarkDirty()
+  if (!list.length) return null
+  return (
+    <div className="grid gap-1.5 sm:col-span-2">
+      <span className="text-xs font-medium text-muted-foreground">자주 쓰는 지출 (누르면 채워짐)</span>
+      <div className="flex flex-wrap gap-1.5">
+        {list.map((x) => (
+          <Button key={x.id} type="button" size="sm" variant={item === x.item ? "secondary" : "outline"}
+            onClick={() => {
+              onPick(x)
+              markDirty()
+            }}>
+            {x.item}
+            <span className="num text-muted-foreground">{x.amount > 0 ? won(x.amount) : "금액 입력"}</span>
+          </Button>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -264,19 +300,23 @@ export function FixedRunDialog({ buildingId, onClose }: { buildingId: string; on
 
 /* ───────── 정기 항목 관리 ───────── */
 
-export function FixedListDialog({ buildingId, onClose }: { buildingId: string; onClose: () => void }) {
+export function FixedListDialog({ buildingId, quick, onClose }: { buildingId: string; quick?: boolean; onClose: () => void }) {
   const { data, openDialog } = useRent()
   const b = data.buildings.find((x) => x.id === buildingId)
-  const list = data.fixedCosts.filter((f) => f.buildingId === buildingId)
+  const list = (quick ? data.quickCosts : data.fixedCosts).filter((f) => f.buildingId === buildingId)
   return (
     <FormShell
-      title={`${b?.name ?? buildingId} 정기 지출 항목`}
-      description="매달 나가는 돈(관리비로 관리인이 내는 공용전기·청소·인터넷+TV·수도 등)을 등록합니다."
+      title={`${b?.name ?? buildingId} ${quick ? "자주 쓰는 지출" : "정기 지출 항목"}`}
+      description={
+        quick
+          ? "가끔 나가는 돈(소모품·점검·수리 등)을 등록해 두면 지출 화면에서 태그를 눌러 바로 기록합니다. 금액이 매번 다르면 기본 금액을 0으로 두세요. 누를 때 금액을 묻습니다."
+          : "매달 나가는 돈(관리비로 관리인이 내는 공용전기·청소·인터넷+TV·수도 등)을 등록합니다."
+      }
       onClose={onClose}
       pending={false}
       error={null}
       submitLabel="항목 추가"
-      onSubmit={() => openDialog({ kind: "fixedItem", buildingId })}
+      onSubmit={() => openDialog({ kind: "fixedItem", buildingId, quick })}
     >
       {list.length ? (
         <ul className="divide-y rounded-lg border sm:col-span-2">
@@ -285,14 +325,14 @@ export function FixedListDialog({ buildingId, onClose }: { buildingId: string; o
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{f.item}</p>
                 <p className="num truncate text-xs text-muted-foreground">
-                  기본 {won(f.amount)}
+                  {quick && !f.amount ? "금액은 누를 때 입력" : `기본 ${won(f.amount)}`}
                   {f.memo ? ` · ${f.memo}` : ""}
                 </p>
               </div>
-              <Button type="button" variant="ghost" size="icon-sm" aria-label={`${f.item} 수정`} onClick={() => openDialog({ kind: "fixedItem", id: f.id, buildingId })}>
+              <Button type="button" variant="ghost" size="icon-sm" aria-label={`${f.item} 수정`} onClick={() => openDialog({ kind: "fixedItem", id: f.id, buildingId, quick })}>
                 <Pencil />
               </Button>
-              <Button type="button" variant="ghost" size="icon-sm" aria-label={`${f.item} 삭제`} onClick={() => openDialog({ kind: "deleteFixed", id: f.id })}>
+              <Button type="button" variant="ghost" size="icon-sm" aria-label={`${f.item} 삭제`} onClick={() => openDialog({ kind: "deleteFixed", id: f.id, quick })}>
                 <Trash2 />
               </Button>
             </li>
@@ -305,9 +345,9 @@ export function FixedListDialog({ buildingId, onClose }: { buildingId: string; o
   )
 }
 
-export function FixedItemDialog({ id, buildingId, onClose }: { id?: string; buildingId: string; onClose: () => void }) {
+export function FixedItemDialog({ id, buildingId, quick, onClose }: { id?: string; buildingId: string; quick?: boolean; onClose: () => void }) {
   const { data } = useRent()
-  const editing = id ? data.fixedCosts.find((f) => f.id === id) : undefined
+  const editing = id ? (quick ? data.quickCosts : data.fixedCosts).find((f) => f.id === id) : undefined
   const [item, setItem] = useState(editing?.item ?? "")
   const [amount, setAmount] = useState<number | "">(editing?.amount ?? "")
   const [memo, setMemo] = useState(editing?.memo ?? "")
@@ -315,23 +355,23 @@ export function FixedItemDialog({ id, buildingId, onClose }: { id?: string; buil
   const b = data.buildings.find((x) => x.id === buildingId)
   return (
     <FormShell
-      title={editing ? "정기 항목 수정" : "정기 항목 추가"}
-      description={`${b?.name ?? buildingId} · 기본 금액은 매달 기록할 때 바꿀 수 있습니다.`}
+      title={`${quick ? "자주 쓰는 지출" : "정기 항목"} ${editing ? "수정" : "추가"}`}
+      description={`${b?.name ?? buildingId} · ${quick ? "기본 금액이 있으면 태그를 누르는 즉시 그 금액으로 기록됩니다." : "기본 금액은 매달 기록할 때 바꿀 수 있습니다."}`}
       onClose={onClose}
       pending={pending}
       error={error}
       submitLabel="저장"
-      onSubmit={() => run(() => saveFixedCostAction({ id: editing?.id, buildingId, item, amount: amount || 0, memo }))}
+      onSubmit={() => run(() => (quick ? saveQuickCostAction : saveFixedCostAction)({ id: editing?.id, buildingId, item, amount: amount || 0, memo }))}
     >
       <Field label="항목" htmlFor="fi-i">
-        <Input id="fi-i" className="h-10" list="expense-items" autoComplete="off" placeholder="예: 공용전기" value={item} onChange={(e) => setItem(e.target.value)} />
+        <Input id="fi-i" className="h-10" list="expense-items" autoComplete="off" placeholder={quick ? "예: 소모품" : "예: 공용전기"} value={item} onChange={(e) => setItem(e.target.value)} />
         <ItemList />
       </Field>
-      <Field label="기본 금액 (원)" htmlFor="fi-a">
+      <Field label={quick ? "기본 금액 (원, 매번 다르면 비워 두기)" : "기본 금액 (원)"} htmlFor="fi-a">
         <MoneyInput id="fi-a" value={amount} onChange={setAmount} />
       </Field>
       <Field label="메모 (선택)" htmlFor="fi-memo" full>
-        <Input id="fi-memo" className="h-10" placeholder="예: 한전 고객번호, 납부 계좌" value={memo} onChange={(e) => setMemo(e.target.value)} />
+        <Input id="fi-memo" className="h-10" placeholder={quick ? "예: 전구 교체 (지출 내용으로 같이 기록)" : "예: 한전 고객번호, 납부 계좌"} value={memo} onChange={(e) => setMemo(e.target.value)} />
       </Field>
     </FormShell>
   )
@@ -370,12 +410,13 @@ export function DeleteExpenseDialog({ id, onClose }: { id: string; onClose: () =
   )
 }
 
-export function DeleteFixedDialog({ id, onClose }: { id: string; onClose: () => void }) {
+export function DeleteFixedDialog({ id, quick, onClose }: { id: string; quick?: boolean; onClose: () => void }) {
   const { data } = useRent()
-  const f = data.fixedCosts.find((x) => x.id === id)
+  const f = (quick ? data.quickCosts : data.fixedCosts).find((x) => x.id === id)
   if (!f) return null
   return (
-    <ConfirmDelete title="정기 항목 삭제" description={`${f.item} · 기본 ${won(f.amount)}`}
-      note="앞으로 정기 지출 목록에서 빠집니다. 이미 기록한 지출은 그대로 남습니다." action={() => deleteFixedCostAction(id)} onClose={onClose} />
+    <ConfirmDelete title={quick ? "자주 쓰는 지출 삭제" : "정기 항목 삭제"} description={`${f.item} · 기본 ${won(f.amount)}`}
+      note={`앞으로 ${quick ? "빠른 지출 태그" : "정기 지출 목록"}에서 빠집니다. 이미 기록한 지출은 그대로 남습니다.`}
+      action={() => (quick ? deleteQuickCostAction : deleteFixedCostAction)(id)} onClose={onClose} />
   )
 }

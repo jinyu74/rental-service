@@ -48,12 +48,13 @@ export type DialogState =
   | { kind: "deleteRoom"; id: string }
   | { kind: "deposit"; contractId: string; refund?: boolean }
   | { kind: "deleteDeposit"; id: string }
-  | { kind: "expense"; id?: string; buildingId?: string }
+  | { kind: "expense"; id?: string; buildingId?: string; quickId?: string }
   | { kind: "deleteExpense"; id: string }
   | { kind: "fixedRun"; buildingId: string }
-  | { kind: "fixedList"; buildingId: string }
-  | { kind: "fixedItem"; id?: string; buildingId: string }
-  | { kind: "deleteFixed"; id: string }
+  /** quick: 정기 항목 대신 자주 쓰는(비정기) 항목 */
+  | { kind: "fixedList"; buildingId: string; quick?: boolean }
+  | { kind: "fixedItem"; id?: string; buildingId: string; quick?: boolean }
+  | { kind: "deleteFixed"; id: string; quick?: boolean }
   | null
 
 interface RentCtx {
@@ -177,14 +178,14 @@ export function RentApp({ view, data }: { view: View; data: AppData }) {
       {dialog?.kind === "deleteRoom" && <DeleteRoomDialog id={dialog.id} onClose={closeDialog} />}
       {dialog?.kind === "deposit" && <DepositDialog contractId={dialog.contractId} refund={dialog.refund} onClose={closeDialog} />}
       {dialog?.kind === "deleteDeposit" && <DeleteDepositDialog id={dialog.id} onClose={closeDialog} />}
-      {dialog?.kind === "expense" && <ExpenseDialog id={dialog.id} buildingId={dialog.buildingId} onClose={closeDialog} />}
+      {dialog?.kind === "expense" && <ExpenseDialog id={dialog.id} buildingId={dialog.buildingId} quickId={dialog.quickId} onClose={closeDialog} />}
       {dialog?.kind === "deleteExpense" && <DeleteExpenseDialog id={dialog.id} onClose={closeDialog} />}
       {dialog?.kind === "fixedRun" && <FixedRunDialog buildingId={dialog.buildingId} onClose={closeDialog} />}
-      {dialog?.kind === "fixedList" && <FixedListDialog buildingId={dialog.buildingId} onClose={closeDialog} />}
+      {dialog?.kind === "fixedList" && <FixedListDialog buildingId={dialog.buildingId} quick={dialog.quick} onClose={closeDialog} />}
       {dialog?.kind === "fixedItem" && (
-        <FixedItemDialog key={dialog.id ?? "new"} id={dialog.id} buildingId={dialog.buildingId} onClose={closeDialog} />
+        <FixedItemDialog key={dialog.id ?? "new"} id={dialog.id} buildingId={dialog.buildingId} quick={dialog.quick} onClose={closeDialog} />
       )}
-      {dialog?.kind === "deleteFixed" && <DeleteFixedDialog id={dialog.id} onClose={closeDialog} />}
+      {dialog?.kind === "deleteFixed" && <DeleteFixedDialog id={dialog.id} quick={dialog.quick} onClose={closeDialog} />}
     </Ctx.Provider>
   )
 }

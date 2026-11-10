@@ -1,7 +1,7 @@
 import "server-only"
 import { CORE_KEYS, SHEETS, SHEET_KEYS, type SheetKey } from "./schema"
 import { SheetsError, range, sheetsFetch } from "./google"
-import { mapBuilding, mapContract, mapDeposit, mapExpense, mapFixedCost, mapPayment, mapRoom, toObjects, type Row } from "./normalize"
+import { mapBuilding, mapContract, mapDeposit, mapExpense, mapFixedCost, mapPayment, mapQuickCost, mapRoom, toObjects, type Row } from "./normalize"
 import { STALE, serialQueue, type Store, type Tables } from "./store"
 
 type BatchGet = { valueRanges: { values?: unknown[][] }[] }
@@ -33,6 +33,7 @@ async function readAll(): Promise<Tables> {
     deposits: get("deposits").map(mapDeposit),
     expenses: get("expenses").map(mapExpense),
     fixedCosts: get("fixedCosts").map(mapFixedCost),
+    quickCosts: get("quickCosts").map(mapQuickCost),
   }
 }
 

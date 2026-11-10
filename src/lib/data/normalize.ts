@@ -119,6 +119,15 @@ export const mapExpense = (r: Row): Expense => ({
   row: r._row,
 })
 
+export const mapQuickCost = (r: Row): FixedCost => ({
+  id: str(r["빠른항목ID"]),
+  buildingId: str(r["건물ID"]),
+  item: str(r["항목"]),
+  amount: num(r["기본금액"]),
+  memo: str(r["메모"]),
+  row: r._row,
+})
+
 export const mapFixedCost = (r: Row): FixedCost => ({
   id: str(r["정기항목ID"]),
   buildingId: str(r["건물ID"]),
