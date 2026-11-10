@@ -7,6 +7,8 @@ import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { BILL_LABEL, billOf, statusLabel, type RoomView } from "@/lib/billing"
 import { addMonth, daysBetween, dotDate, md, monthEnd, monthNum, won } from "@/lib/format"
+import { DEPOSIT_LABEL, depositOf, type DepositStatus } from "@/lib/finance"
+import type { Contract } from "@/lib/types"
 import { Empty, Pill, TypeBadge, type Tone } from "./bits"
 import { useRent } from "./rent-app"
 
@@ -67,6 +69,7 @@ export function RoomDetail({ room: r, hideTitle }: { room: RoomView; hideTitle?:
             <Plus /> 이 호실에 새 계약 등록
           </Button>
         </div>
+        {last && <DepositSection contract={last} onlyIfHeld />}
         <RoomAdmin room={r} />
       </div>
     )
@@ -136,6 +139,9 @@ export function RoomDetail({ room: r, hideTitle }: { room: RoomView; hideTitle?:
         </div>
         {c.memo && <p className="text-xs text-muted-foreground">메모: {c.memo}</p>}
       </Section>
+      <Separator />
+
+      <DepositSection contract={c} />
       <Separator />
 
       <Section
@@ -223,6 +229,61 @@ export function RoomDetail({ room: r, hideTitle }: { room: RoomView; hideTitle?:
       <Source text={`원본: 「계약」 탭 ${c.row}행 · ${c.id}`} />
       <RoomAdmin room={r} />
     </div>
+  )
+}
+
+const DEP_TONE: Record<DepositStatus, Tone> = {
+  none: "vacant", unpaid: "unpaid", partial: "partial", full: "paid", returning: "late", returned: "vacant",
+}
+
+/** 계약의 보증금 입금(계약금·잔금)·반환 현황. 보증금은 돌려줄 돈이라 수익에 넣지 않는다 */
+function DepositSection({ contract: c, onlyIfHeld }: { contract: Contract; onlyIfHeld?: boolean }) {
+  const { data, openDialog } = useRent()
+  const v = depositOf(c, data.deposits)
+  if (onlyIfHeld && v.held <= 0) return null
+  const legacy = !v.records.length && daysBetween(c.start, data.today) > 60
+  const ended = c.status === "종료"
+  return (
+    <Section
+      title={ended ? `보증금 · 직전 계약 ${c.tenant}` : "보증금"}
+      aside={<Pill tone={legacy ? "vacant" : DEP_TONE[v.st]}>{legacy ? "입금 기록 없음" : DEPOSIT_LABEL[v.st]}</Pill>}
+    >
+      <div>
+        <KV k="약정 보증금" v={won(c.deposit)} />
+        <KV k="입금" v={won(v.received)} />
+        {v.returned > 0 && <KV k="반환" v={won(v.returned)} />}
+        <KV k={ended || v.returned > 0 ? "돌려줄 보증금" : "남은 금액"} v={won(ended || v.returned > 0 ? v.held : v.remaining)} strong />
+      </div>
+      {v.records.length > 0 && (
+        <div className="divide-y">
+          {v.records.map((d) => (
+            <div key={d.id} className="flex items-center gap-2 py-1.5">
+              <div className="num flex-1 text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">{d.kind}</span> {won(d.amount)} · {dotDate(d.date)} · {d.method}
+                {d.memo ? ` · ${d.memo}` : ""}
+              </div>
+              <Button variant="ghost" size="icon-sm" onClick={() => openDialog({ kind: "deleteDeposit", id: d.id })}
+                aria-label={`${dotDate(d.date)} 보증금 ${d.kind} ${won(d.amount)} 기록 삭제`}>
+                <Trash2 />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+      {legacy && <p className="text-xs text-muted-foreground">앱을 쓰기 전 계약이면 받은 보증금을 한 번 기록해 두면 퇴실 때 반환 금액을 확인할 수 있습니다.</p>}
+      <div className="grid grid-cols-2 gap-2">
+        {!ended && v.remaining > 0 && (
+          <Button variant="outline" onClick={() => openDialog({ kind: "deposit", contractId: c.id })}>
+            <Plus /> 입금 기록
+          </Button>
+        )}
+        {v.held > 0 && (
+          <Button variant="outline" onClick={() => openDialog({ kind: "deposit", contractId: c.id, refund: true })}>
+            반환 기록
+          </Button>
+        )}
+      </div>
+    </Section>
   )
 }
 

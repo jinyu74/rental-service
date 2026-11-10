@@ -10,7 +10,26 @@ export const SHEETS = {
     name: "수납내역",
     headers: ["수납ID", "계약ID", "호실ID", "청구월", "입금액", "입금일", "방법", "메모", "기록일시"],
   },
+  deposits: {
+    name: "보증금내역",
+    headers: ["보증금ID", "계약ID", "호실ID", "구분", "금액", "일자", "방법", "메모", "기록일시"],
+  },
+  expenses: {
+    name: "지출내역",
+    headers: ["지출ID", "건물ID", "귀속월", "항목", "금액", "지출일", "메모", "정기항목ID", "기록일시"],
+  },
+  fixedCosts: {
+    name: "정기지출",
+    headers: ["정기항목ID", "건물ID", "항목", "기본금액", "메모"],
+  },
 } as const
+
+/** 처음부터 있던 탭. 나중에 추가된 탭(보증금·지출·정기지출)은 없으면 빈 목록으로 읽고, 처음 쓸 때 만든다 */
+export const CORE_KEYS = ["buildings", "rooms", "contracts", "payments"] as const
+export const SHEET_KEYS = [...CORE_KEYS, "deposits", "expenses", "fixedCosts"] as const
+
+/** 지출 항목 추천 목록 (직접 입력도 가능) */
+export const EXPENSE_ITEMS = ["공용전기", "수도", "청소", "인터넷+TV", "승강기 유지보수", "소방 점검", "수선·하자보수", "소모품", "세금·보험", "기타"]
 
 export type SheetKey = keyof typeof SHEETS
 
