@@ -2,7 +2,7 @@ import "server-only"
 import { CORE_KEYS, SHEETS, SHEET_KEYS, type SheetKey } from "./schema"
 import { SheetsError, range, sheetsFetch } from "./google"
 import { mapBuilding, mapContract, mapDeposit, mapExpense, mapFixedCost, mapPayment, mapQuickCost, mapBroker, mapRoom, toObjects, type Row } from "./normalize"
-import { STALE, serialQueue, type Store, type Tables } from "./store"
+import { STALE, type Cells, type Segment, serialQueue, type Store, type Tables } from "./store"
 
 type BatchGet = { valueRanges: { values?: unknown[][] }[] }
 
@@ -95,9 +95,13 @@ const rowsOf = (rows: (string | number)[][]) => rows.map((r) => ({ values: r.map
 async function missingColumns(key: SheetKey, sheetId: number): Promise<object[]> {
   const want = SHEETS[key].headers as readonly string[]
   const have = seenHeaders.get(key)
-  if (!have || !have.length || have.length >= want.length) return []
-  if (have.some((h, i) => h !== want[i]))
-    throw new Error(`「${SHEETS[key].name}」 탭 머리글이 앱과 다릅니다(${have.join(", ")}). 열 순서를 바꾸지 마세요.`)
+  // 쓰기는 열 위치로 하므로, 앱이 아는 열의 이름·순서가 시트와 같은지 매번 먼저 본다(뒤에 사용자가 더 붙인 열은 상관없음)
+  if (!have) throw new Error(`「${SHEETS[key].name}」 탭을 읽지 못했습니다. 새로고침 후 다시 시도하세요.`)
+  if (!have.length) throw new Error(`「${SHEETS[key].name}」 탭에 머리글이 없습니다. pnpm setup-sheet 를 실행하세요.`)
+  const wrong = want.findIndex((h, i) => i < have.length && have[i] !== h)
+  if (wrong >= 0)
+    throw new Error(`「${SHEETS[key].name}」 탭 ${wrong + 1}번째 열 머리글이 「${have[wrong]}」입니다(앱은 「${want[wrong]}」). 열 이름·순서를 바꾸지 마세요.`)
+  if (have.length >= want.length) return []
   const meta = await sheetsFetch<{ sheets: { properties: { sheetId: number; gridProperties?: { columnCount?: number } } }[] }>(
     "?fields=sheets.properties(sheetId,gridProperties.columnCount)",
   )
@@ -109,9 +113,9 @@ async function missingColumns(key: SheetKey, sheetId: number): Promise<object[]>
 }
 
 /** 데이터 쓰기 + (필요하면) 빠진 머리글 채우기를 한 번에 */
-async function writeTo(key: SheetKey, sheetId: number, request: object) {
+async function writeTo(key: SheetKey, sheetId: number, ...requests: object[]) {
   const fix = await missingColumns(key, sheetId)
-  await fencedWrite(...fix, request)
+  await fencedWrite(...fix, ...requests)
   if (fix.length) seenHeaders.set(key, [...SHEETS[key].headers])
 }
 
@@ -137,13 +141,20 @@ async function assertRowId(key: SheetKey, row: number, id: string) {
   if (String(res.values?.[0]?.[0] ?? "").trim() !== id) throw new Error(STALE)
 }
 
-async function updateCells(key: SheetKey, row: number, id: string, fromHeader: string, values: (string | number)[]) {
+async function updateCells(key: SheetKey, row: number, id: string, fromHeader: string, values: Cells, more: Segment[] = []) {
   await assertRowId(key, row, id)
-  const columnIndex = SHEETS[key].headers.indexOf(fromHeader as never)
   const sheetId = await tabId(key)
-  await writeTo(key, sheetId, {
-    updateCells: { start: { sheetId, rowIndex: row - 1, columnIndex }, rows: [{ values: values.map(cell) }], fields: "userEnteredValue" },
-  })
+  await writeTo(
+    key,
+    sheetId,
+    ...[[fromHeader, values] as Segment, ...more].map(([from, vals]) => ({
+      updateCells: {
+        start: { sheetId, rowIndex: row - 1, columnIndex: SHEETS[key].headers.indexOf(from as never) },
+        rows: [{ values: vals.map(cell) }],
+        fields: "userEnteredValue",
+      },
+    })),
+  )
 }
 
 async function deleteRow(key: SheetKey, row: number, id: string) {

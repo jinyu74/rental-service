@@ -110,11 +110,13 @@ export const mockStore: Store = {
   async append(key, rows) {
     grid()[key].push(...rows)
   },
-  async updateCells(key, row, id, fromHeader, values) {
+  async updateCells(key, row, id, fromHeader, values, more = []) {
     if (String(grid()[key][row - 1]?.[0] ?? "") !== id) throw new Error(STALE)
-    const start = SHEETS[key].headers.indexOf(fromHeader as never)
     const target = grid()[key][row - 1]
-    values.forEach((v, i) => (target[start + i] = v))
+    for (const [from, vals] of [[fromHeader, values] as const, ...more]) {
+      const start = SHEETS[key].headers.indexOf(from as never)
+      vals.forEach((v, i) => (target[start + i] = v))
+    }
   },
   async deleteRow(key, row, id) {
     if (String(grid()[key][row - 1]?.[0] ?? "") !== id) throw new Error(STALE)

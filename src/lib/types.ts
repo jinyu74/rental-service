@@ -33,7 +33,6 @@ export interface Contract {
   end: string // YYYY-MM-DD
   status: ContractStatus
   memo: string
-  createdAt: string
   /** 「중개소」 탭의 ID (직거래면 빈칸) */
   brokerId: string
   /** 저장할 때의 중개소 이름 (시트에서 읽기 쉽게 같이 적어 둠). 화면은 brokerId 로 찾은 현재 이름을 우선 쓴다 */

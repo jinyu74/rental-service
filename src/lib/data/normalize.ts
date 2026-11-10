@@ -72,7 +72,6 @@ export const mapContract = (r: Row): Contract => ({
   end: normDate(r["종료일"]),
   status: str(r["상태"]) === "종료" ? "종료" : "진행",
   memo: str(r["메모"]),
-  createdAt: str(r["등록일시"]),
   brokerId: str(r["중개소ID"]),
   brokerName: str(r["중개소"]),
   brokerFee: num(r["중개수수료"]),

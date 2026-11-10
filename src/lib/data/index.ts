@@ -94,8 +94,8 @@ async function _saveContract(c: ContractInput) {
   if (c.id) {
     const hit = contracts.find((x) => x.id === c.id)
     if (!hit) throw new Error("계약을 찾을 수 없습니다.")
-    // 등록일시는 그대로 다시 써서 중개 정보 열까지 한 번에 고친다
-    await store().updateCells("contracts", hit.row, hit.id, "호실ID", [...values, hit.status, c.memo, hit.createdAt, ...brokerValues])
+    // 등록일시 열은 건드리지 않고, 그 앞(호실ID~메모)과 뒤(중개 정보)를 한 번에 쓴다
+    await store().updateCells("contracts", hit.row, hit.id, "호실ID", [...values, hit.status, c.memo], [["중개소", brokerValues]])
     return
   }
   await store().append("contracts", [[newId("C"), ...values, "진행", c.memo, seoulNow().stamp, ...brokerValues]])
