@@ -1,13 +1,80 @@
 "use client"
 
-import { CalendarCheck, ListChecks, Pencil, Plus, Trash2 } from "lucide-react"
+import { useRef, useTransition } from "react"
+import { CalendarCheck, ListChecks, Pencil, Plus, Trash2, Zap } from "lucide-react"
+import { toast } from "sonner"
+import { deleteExpenseAction, recordQuickAction } from "@/app/actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { fixedStatus, monthFinance } from "@/lib/finance"
 import { dotDate, monthNum, won } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import type { QuickCost } from "@/lib/types"
 import { Empty, Kpi, MonthSwitcher, PageHeader, Pill } from "./bits"
+import { defaultDate } from "./finance-dialogs"
 import { useRent } from "./rent-app"
+
+/** 자주 쓰는 지출 태그. 누르면 보고 있는 달 지출로 바로 기록하고 「되돌리기」를 띄운다 */
+function QuickBar({ buildingId }: { buildingId: string }) {
+  const { data, month, openDialog } = useRent()
+  const [pending, start] = useTransition()
+  const lock = useRef(false) // 다시 그려지기 전 연속 클릭도 막는다
+  const list = data.quickCosts.filter((q) => q.buildingId === buildingId)
+
+  const tap = (q: QuickCost) => {
+    if (!(q.amount > 0)) return openDialog({ kind: "expense", quickId: q.id })
+    if (lock.current) return
+    lock.current = true
+    start(async () => {
+      try {
+        const r = await recordQuickAction({ quickId: q.id, month, date: defaultDate(data.today, month) })
+        if (!r.ok) return void toast.error(r.error)
+        const id = r.id
+        toast.success(`${monthNum(month)}월 지출 기록: ${q.item} ${won(q.amount)}`, {
+          duration: 8000,
+          action: id
+            ? {
+                label: "되돌리기",
+                onClick: async () => {
+                  const d = await deleteExpenseAction(id)
+                  if (d.ok) toast.success("방금 기록을 되돌렸습니다.")
+                  else toast.error(d.error)
+                },
+              }
+            : undefined,
+        })
+      } finally {
+        lock.current = false
+      }
+    })
+  }
+
+  return (
+    <section className="rounded-lg border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-1 text-sm font-semibold">
+          <Zap className="size-3.5 text-muted-foreground" /> 빠른 지출
+        </h3>
+        <Button variant="ghost" size="sm" aria-label="빠른 지출 항목 관리" onClick={() => openDialog({ kind: "fixedList", buildingId, quick: true })}>
+          <ListChecks /> 항목 관리
+        </Button>
+      </div>
+      {list.length ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {list.map((q) => (
+            <Button key={q.id} variant="outline" size="sm" disabled={pending} onClick={() => tap(q)}
+              aria-label={q.amount > 0 ? `${q.item} ${won(q.amount)} 바로 기록` : `${q.item} 금액 입력해 기록`}>
+              {q.item}
+              <span className="num text-muted-foreground">{q.amount > 0 ? won(q.amount) : "금액 입력"}</span>
+            </Button>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-1 text-xs text-muted-foreground">소모품·점검·수리처럼 가끔 나가는 지출을 등록하면 눌러서 바로 기록할 수 있습니다.</p>
+      )}
+    </section>
+  )
+}
 
 export function ExpensesView() {
   const { data, M, month, setMonth, openDialog } = useRent()
@@ -64,7 +131,7 @@ export function ExpensesView() {
                       )}
                     </h3>
                     <div className="flex gap-1.5">
-                      <Button variant="ghost" size="sm" onClick={() => openDialog({ kind: "fixedList", buildingId: b.id })}>
+                      <Button variant="ghost" size="sm" aria-label="정기 지출 항목 관리" onClick={() => openDialog({ kind: "fixedList", buildingId: b.id })}>
                         <ListChecks /> 항목 관리
                       </Button>
                       {(missing.length > 0 || !fixed.length) && (
@@ -88,6 +155,8 @@ export function ExpensesView() {
                     <p className="mt-1 text-xs text-muted-foreground">공용전기·청소·인터넷+TV·수도처럼 매달 나가는 항목을 등록하세요.</p>
                   )}
                 </section>
+
+                <QuickBar buildingId={b.id} />
 
                 <div className="divide-y">
                   {list.length ? (

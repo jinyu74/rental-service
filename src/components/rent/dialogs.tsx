@@ -155,10 +155,11 @@ export function Field({ label, htmlFor, full, children }: { label: string; htmlF
   )
 }
 
-export function MoneyInput({ id, value, onChange }: { id: string; value: number | ""; onChange: (n: number | "") => void }) {
+export function MoneyInput({ id, value, onChange, autoFocus }: { id: string; value: number | ""; onChange: (n: number | "") => void; autoFocus?: boolean }) {
   return (
     <Input
       id={id}
+      autoFocus={autoFocus}
       inputMode="numeric"
       className="num h-10 text-right"
       value={value === "" ? "" : value.toLocaleString("ko-KR")}

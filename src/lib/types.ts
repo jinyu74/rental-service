@@ -89,6 +89,9 @@ export interface FixedCost {
   row: number
 }
 
+/** 자주 쓰는 비정기 지출. 태그를 누르면 바로 지출로 기록된다 (기본 금액 0 이면 금액을 물어본다) */
+export type QuickCost = FixedCost
+
 export interface AppData {
   buildings: Building[]
   rooms: Room[]
@@ -97,6 +100,7 @@ export interface AppData {
   deposits: Deposit[]
   expenses: Expense[]
   fixedCosts: FixedCost[]
+  quickCosts: QuickCost[]
   today: string
   sheetUrl: string | null
   syncedAt: string
@@ -127,7 +131,7 @@ export interface ContractInput {
   memo: string
 }
 
-export type ActionResult = { ok: true; message: string } | { ok: false; error: string }
+export type ActionResult = { ok: true; message: string; id?: string } | { ok: false; error: string }
 
 export interface BuildingInput {
   id?: string // 수정할 때만. 새 건물은 code 로 ID 를 만든다
@@ -171,6 +175,13 @@ export interface FixedCostInput {
   item: string
   amount: number
   memo: string
+}
+
+/** 빠른 지출: 등록한 항목 하나를 그 달 지출로 바로 기록 */
+export interface QuickRunInput {
+  quickId: string
+  month: string
+  date: string
 }
 
 /** 이번 달 정기 지출을 한 번에 기록 */

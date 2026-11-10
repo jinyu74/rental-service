@@ -1,6 +1,6 @@
 import "server-only"
 import { seoulNow } from "../format"
-import type { AppData, BuildingInput, ContractInput, DepositInput, ExpenseInput, FixedCostInput, FixedRunInput, PaymentInput, RoomInput } from "../types"
+import type { AppData, BuildingInput, ContractInput, DepositInput, ExpenseInput, FixedCostInput, FixedRunInput, PaymentInput, QuickRunInput, RoomInput } from "../types"
 import { sheetUrl, sheetsConfig } from "./google"
 import { mockStore } from "./mock-store"
 import { sheetsStore } from "./sheets-store"
@@ -115,13 +115,13 @@ async function _saveBuilding(b: BuildingInput) {
 }
 
 async function _deleteBuilding(id: string) {
-  const { buildings, rooms, expenses, fixedCosts } = await store().readAll()
+  const { buildings, rooms, expenses, fixedCosts, quickCosts } = await store().readAll()
   const hit = buildings.find((x) => x.id === id)
   if (!hit) throw new Error("건물을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
   const n = rooms.filter((r) => r.buildingId === id).length
   if (n) throw new Error(`호실이 ${n}개 있어 삭제할 수 없습니다. 호실을 먼저 삭제하세요.`)
-  if (expenses.some((e) => e.buildingId === id) || fixedCosts.some((f) => f.buildingId === id))
-    throw new Error("지출·정기 지출 기록이 있는 건물은 삭제할 수 없습니다.")
+  if (expenses.some((e) => e.buildingId === id) || fixedCosts.some((f) => f.buildingId === id) || quickCosts.some((f) => f.buildingId === id))
+    throw new Error("지출 기록이나 정기·자주 쓰는 지출 항목이 있는 건물은 삭제할 수 없습니다.")
   await store().deleteRow("buildings", hit.row, hit.id)
 }
 
@@ -231,29 +231,57 @@ async function _deleteExpense(id: string) {
   await store().deleteRow("expenses", hit.row, hit.id)
 }
 
-async function _saveFixedCost(f: FixedCostInput) {
+/** 정기 항목과 자주 쓰는 항목은 같은 모양의 탭(ID, 건물ID, 항목, 기본금액, 메모)이라 저장 로직을 같이 쓴다 */
+const PRESET = {
+  fixedCosts: { prefix: "FX", label: "정기 항목" },
+  quickCosts: { prefix: "Q", label: "자주 쓰는 항목" },
+} as const
+type PresetKey = keyof typeof PRESET
+
+async function savePreset(key: PresetKey, f: FixedCostInput) {
+  const { label, prefix } = PRESET[key]
   const item = f.item.trim()
   if (!item) throw new Error("항목 이름을 입력하세요.")
   if (!(f.amount >= 0)) throw new Error("기본 금액을 확인하세요.")
-  const { buildings, fixedCosts } = await store().readAll()
+  const t = await store().readAll()
+  const list = t[key]
   if (f.id) {
-    const hit = fixedCosts.find((x) => x.id === f.id)
-    if (!hit) throw new Error("정기 항목을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
-    if (fixedCosts.some((x) => x.buildingId === hit.buildingId && x.item === item && x.id !== hit.id)) throw new Error(`「${item}」 항목이 이미 있습니다.`)
-    await store().updateCells("fixedCosts", hit.row, hit.id, "항목", [item, f.amount, f.memo.trim()])
+    const hit = list.find((x) => x.id === f.id)
+    if (!hit) throw new Error(`${label}을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.`)
+    if (list.some((x) => x.buildingId === hit.buildingId && x.item === item && x.id !== hit.id)) throw new Error(`「${item}」 항목이 이미 있습니다.`)
+    await store().updateCells(key, hit.row, hit.id, "항목", [item, f.amount, f.memo.trim()])
     return
   }
-  if (!buildings.some((b) => b.id === f.buildingId)) throw new Error("건물을 선택하세요.")
-  if (fixedCosts.some((x) => x.buildingId === f.buildingId && x.item === item)) throw new Error(`「${item}」 항목이 이미 있습니다.`)
-  await store().append("fixedCosts", [[newId("FX"), f.buildingId, item, f.amount, f.memo.trim()]])
+  if (!t.buildings.some((b) => b.id === f.buildingId)) throw new Error("건물을 선택하세요.")
+  if (list.some((x) => x.buildingId === f.buildingId && x.item === item)) throw new Error(`「${item}」 항목이 이미 있습니다.`)
+  await store().append(key, [[newId(prefix, new Set(list.map((x) => x.id))), f.buildingId, item, f.amount, f.memo.trim()]])
 }
 
-async function _deleteFixedCost(id: string) {
-  const { fixedCosts } = await store().readAll()
-  const hit = fixedCosts.find((x) => x.id === id)
-  if (!hit) throw new Error("정기 항목을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
+async function deletePreset(key: PresetKey, id: string) {
+  const list = (await store().readAll())[key]
+  const hit = list.find((x) => x.id === id)
+  if (!hit) throw new Error(`${PRESET[key].label}을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.`)
   // 이미 기록한 지출은 항목 이름을 그대로 갖고 있으므로 남겨둔다
-  await store().deleteRow("fixedCosts", hit.row, hit.id)
+  await store().deleteRow(key, hit.row, hit.id)
+}
+
+const _saveFixedCost = (f: FixedCostInput) => savePreset("fixedCosts", f)
+const _deleteFixedCost = (id: string) => deletePreset("fixedCosts", id)
+const _saveQuickCost = (f: FixedCostInput) => savePreset("quickCosts", f)
+const _deleteQuickCost = (id: string) => deletePreset("quickCosts", id)
+
+/** 자주 쓰는 항목 하나를 그 달 기타 지출로 기록하고 새 지출ID 를 돌려준다(되돌리기용). 같은 달 여러 번 기록 가능 */
+async function _recordQuick(q: QuickRunInput): Promise<string> {
+  if (!MONTH.test(q.month)) throw new Error("귀속월 형식은 YYYY-MM 입니다.")
+  if (!DATE.test(q.date)) throw new Error("지출일을 확인하세요.")
+  const { quickCosts, buildings, expenses } = await store().readAll()
+  const f = quickCosts.find((x) => x.id === q.quickId)
+  if (!f) throw new Error("자주 쓰는 항목을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
+  if (!buildings.some((b) => b.id === f.buildingId)) throw new Error("건물을 찾을 수 없습니다.")
+  if (!(f.amount > 0)) throw new Error(`「${f.item}」 은 기본 금액이 없어 바로 기록할 수 없습니다. 금액을 입력해 기록하세요.`)
+  const id = newId("E", new Set(expenses.map((e) => e.id)))
+  await store().append("expenses", [[id, f.buildingId, q.month, f.item, f.amount, q.date, f.memo, "", seoulNow().stamp]])
+  return id
 }
 
 /** 이번 달 정기 지출 한꺼번에 기록. 이미 기록된 항목은 건너뛴다(두 번 눌러도 중복되지 않음) */
@@ -293,4 +321,7 @@ export const saveExpense = exclusive(_saveExpense)
 export const deleteExpense = exclusive(_deleteExpense)
 export const saveFixedCost = exclusive(_saveFixedCost)
 export const deleteFixedCost = exclusive(_deleteFixedCost)
+export const saveQuickCost = exclusive(_saveQuickCost)
+export const deleteQuickCost = exclusive(_deleteQuickCost)
+export const recordQuick = (q: QuickRunInput) => store().transaction(() => _recordQuick(q))
 export const recordFixedRun = (run: FixedRunInput) => store().transaction(() => _recordFixedRun(run))
