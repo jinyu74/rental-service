@@ -1,14 +1,18 @@
 import "server-only"
 import { CORE_KEYS, SHEETS, SHEET_KEYS, type SheetKey } from "./schema"
 import { SheetsError, range, sheetsFetch } from "./google"
-import { mapBuilding, mapContract, mapDeposit, mapExpense, mapFixedCost, mapPayment, mapQuickCost, mapRoom, toObjects, type Row } from "./normalize"
-import { STALE, serialQueue, type Store, type Tables } from "./store"
+import { mapBuilding, mapContract, mapDeposit, mapExpense, mapFixedCost, mapPayment, mapQuickCost, mapBroker, mapRoom, toObjects, type Row } from "./normalize"
+import { STALE, type Cells, type Segment, serialQueue, type Store, type Tables } from "./store"
 
 type BatchGet = { valueRanges: { values?: unknown[][] }[] }
+
+/** 마지막으로 읽은 각 탭의 실제 머리글. 쓰기 전에 나중에 추가된 열의 머리글이 있는지 보는 데 쓴다 */
+const seenHeaders = new Map<SheetKey, string[]>()
 
 async function batchGet(keys: readonly SheetKey[]) {
   const qs = keys.map((k) => "ranges=" + range(SHEETS[k].name)).join("&")
   const res = await sheetsFetch<BatchGet>(`/values:batchGet?${qs}&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING`)
+  keys.forEach((k, i) => seenHeaders.set(k, (res.valueRanges[i]?.values?.[0] ?? []).map((h) => String(h).trim())))
   return new Map(keys.map((k, i) => [k, toObjects(res.valueRanges[i]?.values)]))
 }
 
@@ -34,6 +38,7 @@ async function readAll(): Promise<Tables> {
     expenses: get("expenses").map(mapExpense),
     fixedCosts: get("fixedCosts").map(mapFixedCost),
     quickCosts: get("quickCosts").map(mapQuickCost),
+    brokers: get("brokers").map(mapBroker),
   }
 }
 
@@ -82,10 +87,42 @@ async function fencedWrite(...requests: object[]) {
 
 const rowsOf = (rows: (string | number)[][]) => rows.map((r) => ({ values: r.map(cell) }))
 
+/**
+ * 기존 탭 오른쪽에 나중에 추가된 열(예: 계약 탭의 중개소)이 아직 없으면, 머리글을 채우고 필요하면 열을 늘리는 요청을 만든다.
+ * 데이터 쓰기와 같은 batchUpdate 에 넣으므로 머리글만 생기거나 데이터만 써지는 일은 없다.
+ * 쓰기는 모두 트랜잭션 안에서 readAll 직후에 하므로 seenHeaders 는 방금 읽은 값이다.
+ */
+async function missingColumns(key: SheetKey, sheetId: number): Promise<object[]> {
+  const want = SHEETS[key].headers as readonly string[]
+  const have = seenHeaders.get(key)
+  // 쓰기는 열 위치로 하므로, 앱이 아는 열의 이름·순서가 시트와 같은지 매번 먼저 본다(뒤에 사용자가 더 붙인 열은 상관없음)
+  if (!have) throw new Error(`「${SHEETS[key].name}」 탭을 읽지 못했습니다. 새로고침 후 다시 시도하세요.`)
+  if (!have.length) throw new Error(`「${SHEETS[key].name}」 탭에 머리글이 없습니다. pnpm setup-sheet 를 실행하세요.`)
+  const wrong = want.findIndex((h, i) => i < have.length && have[i] !== h)
+  if (wrong >= 0)
+    throw new Error(`「${SHEETS[key].name}」 탭 ${wrong + 1}번째 열 머리글이 「${have[wrong]}」입니다(앱은 「${want[wrong]}」). 열 이름·순서를 바꾸지 마세요.`)
+  if (have.length >= want.length) return []
+  const meta = await sheetsFetch<{ sheets: { properties: { sheetId: number; gridProperties?: { columnCount?: number } } }[] }>(
+    "?fields=sheets.properties(sheetId,gridProperties.columnCount)",
+  )
+  const cols = meta.sheets.find((s) => s.properties.sheetId === sheetId)?.properties.gridProperties?.columnCount ?? 0
+  return [
+    ...(cols < want.length ? [{ appendDimension: { sheetId, dimension: "COLUMNS", length: want.length - cols } }] : []),
+    { updateCells: { start: { sheetId, rowIndex: 0, columnIndex: have.length }, rows: rowsOf([want.slice(have.length)]), fields: "userEnteredValue" } },
+  ]
+}
+
+/** 데이터 쓰기 + (필요하면) 빠진 머리글 채우기를 한 번에 */
+async function writeTo(key: SheetKey, sheetId: number, ...requests: object[]) {
+  const fix = await missingColumns(key, sheetId)
+  await fencedWrite(...fix, ...requests)
+  if (fix.length) seenHeaders.set(key, [...SHEETS[key].headers])
+}
+
 async function append(key: SheetKey, rows: (string | number)[][]) {
   if (!rows.length) return
   const id = await findTab(key)
-  if (id != null) return fencedWrite({ appendCells: { sheetId: id, rows: rowsOf(rows), fields: "userEnteredValue" } })
+  if (id != null) return writeTo(key, id, { appendCells: { sheetId: id, rows: rowsOf(rows), fields: "userEnteredValue" } })
   if ((CORE_KEYS as readonly SheetKey[]).includes(key)) throw new Error(`「${SHEETS[key].name}」 탭이 없습니다.`)
   // 나중에 추가된 탭은 처음 쓸 때 머리글과 함께 만든다. 같은 batchUpdate 라 탭만 생기고 끝나는 일은 없다
   const sheetId = 1 + Math.floor(Math.random() * 2_000_000_000)
@@ -104,12 +141,20 @@ async function assertRowId(key: SheetKey, row: number, id: string) {
   if (String(res.values?.[0]?.[0] ?? "").trim() !== id) throw new Error(STALE)
 }
 
-async function updateCells(key: SheetKey, row: number, id: string, fromHeader: string, values: (string | number)[]) {
+async function updateCells(key: SheetKey, row: number, id: string, fromHeader: string, values: Cells, more: Segment[] = []) {
   await assertRowId(key, row, id)
-  const columnIndex = SHEETS[key].headers.indexOf(fromHeader as never)
-  await fencedWrite({
-    updateCells: { start: { sheetId: await tabId(key), rowIndex: row - 1, columnIndex }, rows: [{ values: values.map(cell) }], fields: "userEnteredValue" },
-  })
+  const sheetId = await tabId(key)
+  await writeTo(
+    key,
+    sheetId,
+    ...[[fromHeader, values] as Segment, ...more].map(([from, vals]) => ({
+      updateCells: {
+        start: { sheetId, rowIndex: row - 1, columnIndex: SHEETS[key].headers.indexOf(from as never) },
+        rows: [{ values: vals.map(cell) }],
+        fields: "userEnteredValue",
+      },
+    })),
+  )
 }
 
 async function deleteRow(key: SheetKey, row: number, id: string) {

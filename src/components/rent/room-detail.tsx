@@ -5,12 +5,40 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
-import { BILL_LABEL, billOf, statusLabel, type RoomView } from "@/lib/billing"
+import { BILL_LABEL, billOf, roomName, statusLabel, type RoomView } from "@/lib/billing"
 import { addMonth, daysBetween, dotDate, md, monthEnd, monthNum, won } from "@/lib/format"
 import { DEPOSIT_LABEL, depositOf, type DepositStatus } from "@/lib/finance"
 import type { Contract } from "@/lib/types"
 import { Empty, Pill, TypeBadge, type Tone } from "./bits"
 import { useRent } from "./rent-app"
+import { brokerOf } from "./broker-dialogs"
+
+/** 중개 정보 + 수수료를 지출로 기록 (이미 기록했으면 표시만) */
+function BrokerSection({ c, room }: { c: Contract; room: RoomView }) {
+  const { data, openDialog } = useRent()
+  const b = brokerOf(c, data.brokers)
+  if (!b) return <KV k="중개" v="직거래 (중개소 없음)" />
+  const name = roomName(room)
+  const memo = `${name} ${c.tenant} 계약 · ${b.name}`
+  const recorded = data.expenses.some((e) => e.item === "중개수수료" && e.memo.includes(name) && e.memo.includes(c.tenant))
+  return (
+    <div className="space-y-1">
+      <KV k="중개소" v={b.phone ? <a className="underline-offset-2 hover:underline" href={`tel:${b.phone}`}>{b.name}</a> : b.name} />
+      <KV k="중개수수료" v={b.fee ? won(b.fee) : "없음"} />
+      {b.fee > 0 &&
+        (recorded ? (
+          <p className="text-right text-xs text-muted-foreground">수수료 지출 기록됨</p>
+        ) : (
+          <div className="text-right">
+            <Button variant="link" size="sm" className="h-auto px-0"
+              onClick={() => openDialog({ kind: "expense", prefill: { buildingId: room.buildingId, month: c.start.slice(0, 7), item: "중개수수료", amount: b.fee, memo } })}>
+              수수료를 지출로 기록
+            </Button>
+          </div>
+        ))}
+    </div>
+  )
+}
 
 function Section({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -137,6 +165,7 @@ export function RoomDetail({ room: r, hideTitle }: { room: RoomView; hideTitle?:
           <KV k="월 관리비" v={won(c.fee)} />
           <KV k="매월 청구액" v={won(billOf(c))} strong />
         </div>
+        <BrokerSection c={c} room={r} />
         {c.memo && <p className="text-xs text-muted-foreground">메모: {c.memo}</p>}
       </Section>
       <Separator />

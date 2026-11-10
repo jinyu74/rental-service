@@ -21,6 +21,8 @@ import {
   FixedRunDialog,
 } from "./finance-dialogs"
 import { RoomDetail } from "./room-detail"
+import { BrokerDialog, BrokersDialog, DeleteBrokerDialog } from "./broker-dialogs"
+import type { ExpensePrefill } from "./finance-dialogs"
 import {
   BuildingDialog,
   BuildingsDialog,
@@ -42,13 +44,16 @@ export type DialogState =
   | { kind: "end"; id: string }
   | { kind: "delete"; id: string }
   | { kind: "buildings" }
+  | { kind: "brokers" }
+  | { kind: "broker"; id?: string }
+  | { kind: "deleteBroker"; id: string }
   | { kind: "building"; id?: string }
   | { kind: "deleteBuilding"; id: string }
   | { kind: "room"; id?: string; buildingId?: string }
   | { kind: "deleteRoom"; id: string }
   | { kind: "deposit"; contractId: string; refund?: boolean }
   | { kind: "deleteDeposit"; id: string }
-  | { kind: "expense"; id?: string; buildingId?: string; quickId?: string }
+  | { kind: "expense"; id?: string; buildingId?: string; quickId?: string; prefill?: ExpensePrefill }
   | { kind: "deleteExpense"; id: string }
   | { kind: "fixedRun"; buildingId: string }
   /** quick: 정기 항목 대신 자주 쓰는(비정기) 항목 */
@@ -172,13 +177,16 @@ export function RentApp({ view, data }: { view: View; data: AppData }) {
       {dialog?.kind === "end" && <EndContractDialog id={dialog.id} onClose={closeDialog} />}
       {dialog?.kind === "delete" && <DeletePaymentDialog id={dialog.id} onClose={closeDialog} />}
       {dialog?.kind === "buildings" && <BuildingsDialog onClose={closeDialog} />}
+      {dialog?.kind === "brokers" && <BrokersDialog onClose={closeDialog} />}
+      {dialog?.kind === "broker" && <BrokerDialog key={dialog.id ?? "new"} id={dialog.id} onClose={closeDialog} />}
+      {dialog?.kind === "deleteBroker" && <DeleteBrokerDialog id={dialog.id} onClose={closeDialog} />}
       {dialog?.kind === "building" && <BuildingDialog key={dialog.id ?? "new"} id={dialog.id} onClose={closeDialog} />}
       {dialog?.kind === "deleteBuilding" && <DeleteBuildingDialog id={dialog.id} onClose={closeDialog} />}
       {dialog?.kind === "room" && <RoomDialog id={dialog.id} buildingId={dialog.buildingId} onClose={closeDialog} />}
       {dialog?.kind === "deleteRoom" && <DeleteRoomDialog id={dialog.id} onClose={closeDialog} />}
       {dialog?.kind === "deposit" && <DepositDialog contractId={dialog.contractId} refund={dialog.refund} onClose={closeDialog} />}
       {dialog?.kind === "deleteDeposit" && <DeleteDepositDialog id={dialog.id} onClose={closeDialog} />}
-      {dialog?.kind === "expense" && <ExpenseDialog id={dialog.id} buildingId={dialog.buildingId} quickId={dialog.quickId} onClose={closeDialog} />}
+      {dialog?.kind === "expense" && <ExpenseDialog id={dialog.id} buildingId={dialog.buildingId} quickId={dialog.quickId} prefill={dialog.prefill} onClose={closeDialog} />}
       {dialog?.kind === "deleteExpense" && <DeleteExpenseDialog id={dialog.id} onClose={closeDialog} />}
       {dialog?.kind === "fixedRun" && <FixedRunDialog buildingId={dialog.buildingId} onClose={closeDialog} />}
       {dialog?.kind === "fixedList" && <FixedListDialog buildingId={dialog.buildingId} quick={dialog.quick} onClose={closeDialog} />}

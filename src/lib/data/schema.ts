@@ -4,7 +4,9 @@ export const SHEETS = {
   rooms: { name: "호실", headers: ["호실ID", "건물ID", "호수", "층", "면적(㎡)", "메모"] },
   contracts: {
     name: "계약",
-    headers: ["계약ID", "호실ID", "임차인", "연락처", "유형", "보증금", "월임대료", "관리비", "납부일", "시작일", "종료일", "상태", "메모", "등록일시"],
+    // 중개소·중개수수료·중개소ID 는 나중에 추가된 열. 기존 시트에는 처음 쓸 때 머리글이 붙는다.
+    // 중개소(이름)는 시트에서 바로 읽히도록 저장 시점 이름을 같이 적는다. 앱은 중개소ID 로 「중개소」 탭을 찾는다
+    headers: ["계약ID", "호실ID", "임차인", "연락처", "유형", "보증금", "월임대료", "관리비", "납부일", "시작일", "종료일", "상태", "메모", "등록일시", "중개소", "중개수수료", "중개소ID"],
   },
   payments: {
     name: "수납내역",
@@ -22,18 +24,22 @@ export const SHEETS = {
     name: "정기지출",
     headers: ["정기항목ID", "건물ID", "항목", "기본금액", "메모"],
   },
+  brokers: {
+    name: "중개소",
+    headers: ["중개소ID", "이름", "연락처", "주소", "메모"],
+  },
   quickCosts: {
     name: "자주쓰는지출",
     headers: ["빠른항목ID", "건물ID", "항목", "기본금액", "메모"],
   },
 } as const
 
-/** 처음부터 있던 탭. 나중에 추가된 탭(보증금·지출·정기지출·자주쓰는지출)은 없으면 빈 목록으로 읽고, 처음 쓸 때 만든다 */
+/** 처음부터 있던 탭. 나중에 추가된 탭(보증금·지출·정기지출·자주쓰는지출·중개소)은 없으면 빈 목록으로 읽고, 처음 쓸 때 만든다 */
 export const CORE_KEYS = ["buildings", "rooms", "contracts", "payments"] as const
-export const SHEET_KEYS = [...CORE_KEYS, "deposits", "expenses", "fixedCosts", "quickCosts"] as const
+export const SHEET_KEYS = [...CORE_KEYS, "deposits", "expenses", "fixedCosts", "quickCosts", "brokers"] as const
 
 /** 지출 항목 추천 목록 (직접 입력도 가능) */
-export const EXPENSE_ITEMS = ["공용전기", "수도", "청소", "인터넷+TV", "승강기 유지보수", "소방 점검", "수선·하자보수", "소모품", "세금·보험", "기타"]
+export const EXPENSE_ITEMS = ["중개수수료", "공용전기", "수도", "청소", "인터넷+TV", "승강기 유지보수", "소방 점검", "수선·하자보수", "소모품", "세금·보험", "기타"]
 
 export type SheetKey = keyof typeof SHEETS
 

@@ -120,16 +120,29 @@ export function DepositDialog({ contractId, refund, onClose }: { contractId: str
 
 /* ───────── 지출 기록 / 수정 ───────── */
 
-export function ExpenseDialog({ id, buildingId: preset, quickId, onClose }: { id?: string; buildingId?: string; quickId?: string; onClose: () => void }) {
+/** 다른 화면에서 미리 채워 여는 지출 (예: 계약의 중개수수료) */
+export interface ExpensePrefill {
+  buildingId: string
+  month: string
+  item: string
+  amount: number
+  memo: string
+}
+
+export function ExpenseDialog({ id, buildingId: preset, quickId, prefill, onClose }: {
+  id?: string; buildingId?: string; quickId?: string; prefill?: ExpensePrefill; onClose: () => void
+}) {
   const { data, month } = useRent()
   const editing = id ? data.expenses.find((e) => e.id === id) : undefined
   const q = quickId ? data.quickCosts.find((x) => x.id === quickId) : undefined
-  const [buildingId, setBuildingId] = useState(editing?.buildingId ?? q?.buildingId ?? preset ?? data.buildings[0]?.id ?? "")
-  const [m, setM] = useState(editing?.month ?? month)
-  const [item, setItem] = useState(editing?.item ?? q?.item ?? "")
-  const [amount, setAmount] = useState<number | "">(editing?.amount ?? (q?.amount || ""))
-  const [date, setDate] = useState(editing?.date ?? defaultDate(data.today, month))
-  const [memo, setMemo] = useState(editing?.memo ?? q?.memo ?? "")
+  const init = editing ?? prefill ?? (q && { buildingId: q.buildingId, item: q.item, amount: q.amount, memo: q.memo, month: undefined })
+  const m0 = editing?.month ?? prefill?.month ?? month
+  const [buildingId, setBuildingId] = useState(init?.buildingId ?? preset ?? data.buildings[0]?.id ?? "")
+  const [m, setM] = useState(m0)
+  const [item, setItem] = useState(init?.item ?? "")
+  const [amount, setAmount] = useState<number | "">(init?.amount || "")
+  const [date, setDate] = useState(editing?.date ?? defaultDate(data.today, m0))
+  const [memo, setMemo] = useState(init?.memo ?? "")
   const { pending, error, run } = useSubmit(onClose)
   const quick = editing ? [] : data.quickCosts.filter((x) => x.buildingId === buildingId)
 
@@ -379,7 +392,7 @@ export function FixedItemDialog({ id, buildingId, quick, onClose }: { id?: strin
 
 /* ───────── 삭제 확인 ───────── */
 
-function ConfirmDelete({ title, description, note, action, onClose }: {
+export function ConfirmDelete({ title, description, note, action, onClose }: {
   title: string; description: string; note: string; action: () => Promise<ActionResult>; onClose: () => void
 }) {
   const { pending, error, run } = useSubmit(onClose)
