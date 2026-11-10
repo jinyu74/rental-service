@@ -1,27 +1,38 @@
 import "server-only"
-import { SHEETS, type SheetKey } from "./schema"
+import { CORE_KEYS, SHEETS, SHEET_KEYS, type SheetKey } from "./schema"
 import { SheetsError, range, sheetsFetch } from "./google"
-import { mapBuilding, mapContract, mapPayment, mapRoom, toObjects } from "./normalize"
+import { mapBuilding, mapContract, mapDeposit, mapExpense, mapFixedCost, mapPayment, mapRoom, toObjects, type Row } from "./normalize"
 import { STALE, serialQueue, type Store, type Tables } from "./store"
 
 type BatchGet = { valueRanges: { values?: unknown[][] }[] }
 
-const KEYS: SheetKey[] = ["buildings", "rooms", "contracts", "payments"]
+async function batchGet(keys: readonly SheetKey[]) {
+  const qs = keys.map((k) => "ranges=" + range(SHEETS[k].name)).join("&")
+  const res = await sheetsFetch<BatchGet>(`/values:batchGet?${qs}&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING`)
+  return new Map(keys.map((k, i) => [k, toObjects(res.valueRanges[i]?.values)]))
+}
 
 async function readAll(): Promise<Tables> {
-  const qs = KEYS.map((k) => "ranges=" + range(SHEETS[k].name)).join("&")
-  const res = await sheetsFetch<BatchGet>(
-    `/values:batchGet?${qs}&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING`,
-  ).catch((e: Error) => {
-    if (/Unable to parse range/.test(e.message)) throw new Error("시트에 「건물·호실·계약·수납내역」 탭이 없습니다. pnpm setup-sheet 를 먼저 실행하세요.")
-    throw e
-  })
-  const [b, r, c, p] = res.valueRanges.map((v) => toObjects(v.values))
+  let rows: Map<SheetKey, Row[]>
+  try {
+    rows = await batchGet(SHEET_KEYS)
+  } catch (e) {
+    if (!(e instanceof SheetsError && /Unable to parse range/.test(e.body))) throw e
+    // 나중에 추가된 탭이 아직 없는 시트: 있는 탭만 읽고 나머지는 빈 목록으로 본다
+    const titles = await tabTitles()
+    if (CORE_KEYS.some((k) => !titles.has(SHEETS[k].name)))
+      throw new Error("시트에 「건물·호실·계약·수납내역」 탭이 없습니다. pnpm setup-sheet 를 먼저 실행하세요.")
+    rows = await batchGet(SHEET_KEYS.filter((k) => titles.has(SHEETS[k].name)))
+  }
+  const get = (k: SheetKey) => rows.get(k) ?? []
   return {
-    buildings: b.map(mapBuilding),
-    rooms: r.map(mapRoom),
-    contracts: c.map(mapContract),
-    payments: p.map(mapPayment),
+    buildings: get("buildings").map(mapBuilding),
+    rooms: get("rooms").map(mapRoom),
+    contracts: get("contracts").map(mapContract),
+    payments: get("payments").map(mapPayment),
+    deposits: get("deposits").map(mapDeposit),
+    expenses: get("expenses").map(mapExpense),
+    fixedCosts: get("fixedCosts").map(mapFixedCost),
   }
 }
 
@@ -34,20 +45,21 @@ type Cell = { userEnteredValue: { numberValue: number } | { stringValue: string 
 const cell = (v: string | number): Cell => ({ userEnteredValue: typeof v === "number" ? { numberValue: v } : { stringValue: v } })
 
 let tabIds: Map<string, number> | null = null
+async function tabTitles() {
+  const meta = await sheetsFetch<{ sheets: { properties: { sheetId: number; title: string } }[] }>("?fields=sheets.properties(sheetId,title)")
+  tabIds = new Map(meta.sheets.map((s) => [s.properties.title, s.properties.sheetId]))
+  return tabIds
+}
+async function findTab(key: SheetKey) {
+  return (tabIds ?? (await tabTitles())).get(SHEETS[key].name) ?? (await tabTitles()).get(SHEETS[key].name)
+}
 async function tabId(key: SheetKey) {
-  if (!tabIds) {
-    const meta = await sheetsFetch<{ sheets: { properties: { sheetId: number; title: string } }[] }>("?fields=sheets.properties(sheetId,title)")
-    tabIds = new Map(meta.sheets.map((s) => [s.properties.title, s.properties.sheetId]))
-  }
-  const id = tabIds.get(SHEETS[key].name)
-  if (id == null) {
-    tabIds = null
-    throw new Error(`「${SHEETS[key].name}」 탭이 없습니다.`)
-  }
+  const id = await findTab(key)
+  if (id == null) throw new Error(`「${SHEETS[key].name}」 탭이 없습니다.`)
   return id
 }
 
-async function fencedWrite(request: object) {
+async function fencedWrite(...requests: object[]) {
   if (held == null) throw new Error("잠금 없이 시트에 쓸 수 없습니다.")
   const lock = held
   try {
@@ -56,19 +68,33 @@ async function fencedWrite(request: object) {
       body: JSON.stringify({
         requests: [
           { updateCells: { start: { sheetId: lock, rowIndex: 0, columnIndex: 0 }, rows: [{ values: [cell(Date.now())] }], fields: "userEnteredValue" } },
-          request,
+          ...requests,
         ],
       }),
     })
   } catch (e) {
     if (e instanceof SheetsError && e.status === 400 && e.body.includes(String(lock))) throw new Error(LOST)
-    if (e instanceof SheetsError && /No grid with id/i.test(e.body)) tabIds = null // 탭이 다시 만들어졌을 수 있다
+    if (e instanceof SheetsError && /No grid with id|already exists/i.test(e.body)) tabIds = null // 탭이 다시 만들어졌을 수 있다
     throw e
   }
 }
 
-async function append(key: SheetKey, row: (string | number)[]) {
-  await fencedWrite({ appendCells: { sheetId: await tabId(key), rows: [{ values: row.map(cell) }], fields: "userEnteredValue" } })
+const rowsOf = (rows: (string | number)[][]) => rows.map((r) => ({ values: r.map(cell) }))
+
+async function append(key: SheetKey, rows: (string | number)[][]) {
+  if (!rows.length) return
+  const id = await findTab(key)
+  if (id != null) return fencedWrite({ appendCells: { sheetId: id, rows: rowsOf(rows), fields: "userEnteredValue" } })
+  if ((CORE_KEYS as readonly SheetKey[]).includes(key)) throw new Error(`「${SHEETS[key].name}」 탭이 없습니다.`)
+  // 나중에 추가된 탭은 처음 쓸 때 머리글과 함께 만든다. 같은 batchUpdate 라 탭만 생기고 끝나는 일은 없다
+  const sheetId = 1 + Math.floor(Math.random() * 2_000_000_000)
+  const headers = SHEETS[key].headers as readonly string[]
+  await fencedWrite(
+    { addSheet: { properties: { sheetId, title: SHEETS[key].name, gridProperties: { rowCount: 1000, columnCount: headers.length, frozenRowCount: 1 } } } },
+    { updateCells: { start: { sheetId, rowIndex: 0, columnIndex: 0 }, rows: rowsOf([[...headers]]), fields: "userEnteredValue" } },
+    { appendCells: { sheetId, rows: rowsOf(rows), fields: "userEnteredValue" } },
+  )
+  tabIds = null
 }
 
 /** 쓰기 직전에 대상 행의 ID 를 다시 확인한다. 사람이 시트에서 행을 지우거나 옮긴 경우 엉뚱한 행을 고치지 않도록 멈춘다 */

@@ -32,7 +32,7 @@ import { useRent } from "./rent-app"
 /** 입력 이벤트가 나지 않는 선택 버튼(Seg 등)이 「작성 중」을 알리는 통로 */
 const DirtyCtx = createContext<() => void>(() => {})
 
-function FormShell({
+export function FormShell({
   title,
   description,
   wide,
@@ -144,7 +144,7 @@ function FormShell({
   )
 }
 
-function Field({ label, htmlFor, full, children }: { label: string; htmlFor: string; full?: boolean; children: ReactNode }) {
+export function Field({ label, htmlFor, full, children }: { label: string; htmlFor: string; full?: boolean; children: ReactNode }) {
   return (
     <div className={cn("grid gap-1.5", full && "sm:col-span-2")}>
       <Label htmlFor={htmlFor} className="text-xs text-muted-foreground">
@@ -155,7 +155,7 @@ function Field({ label, htmlFor, full, children }: { label: string; htmlFor: str
   )
 }
 
-function MoneyInput({ id, value, onChange }: { id: string; value: number | ""; onChange: (n: number | "") => void }) {
+export function MoneyInput({ id, value, onChange }: { id: string; value: number | ""; onChange: (n: number | "") => void }) {
   return (
     <Input
       id={id}
@@ -170,7 +170,7 @@ function MoneyInput({ id, value, onChange }: { id: string; value: number | ""; o
   )
 }
 
-function Seg<T extends string>({ value, onChange, items, label }: { value: T; onChange: (v: T) => void; items: { v: T; label: string }[]; label: string }) {
+export function Seg<T extends string>({ value, onChange, items, label }: { value: T; onChange: (v: T) => void; items: { v: T; label: string }[]; label: string }) {
   const markDirty = useContext(DirtyCtx)
   return (
     <ToggleGroup
@@ -198,7 +198,7 @@ function Seg<T extends string>({ value, onChange, items, label }: { value: T; on
   )
 }
 
-function useSubmit(onClose: () => void) {
+export function useSubmit(onClose: () => void) {
   const [pending, start] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const run = (fn: () => Promise<ActionResult>) => {
@@ -426,7 +426,7 @@ export function EndContractDialog({ id, onClose }: { id: string; onClose: () => 
         <Input id="end-d" type="date" className="h-10" value={end} onChange={(e) => setEnd(e.target.value)} />
       </Field>
       <p className="text-sm text-muted-foreground sm:col-span-2">
-        상태가 「종료」로 바뀌고 이 호실은 공실이 됩니다. 보증금 반환은 메모로 남겨두세요.
+        상태가 「종료」로 바뀌고 이 호실은 공실이 됩니다. 보증금을 돌려주면 호실 상세의 「보증금」에서 반환을 기록하세요.
       </p>
     </FormShell>
   )

@@ -1,6 +1,6 @@
 import "server-only"
 import { seoulNow } from "../format"
-import type { AppData, BuildingInput, ContractInput, PaymentInput, RoomInput } from "../types"
+import type { AppData, BuildingInput, ContractInput, DepositInput, ExpenseInput, FixedCostInput, FixedRunInput, PaymentInput, RoomInput } from "../types"
 import { sheetUrl, sheetsConfig } from "./google"
 import { mockStore } from "./mock-store"
 import { sheetsStore } from "./sheets-store"
@@ -11,9 +11,12 @@ const store = () => (isSheetsMode() ? sheetsStore : mockStore)
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const MONTH = /^\d{4}-\d{2}$/
 
-function newId(prefix: string) {
+function newId(prefix: string, taken?: Set<string>) {
   const s = seoulNow().stamp.replace(/\D/g, "").slice(2)
-  return `${prefix}-${s}-${Math.floor(Math.random() * 900 + 100)}`
+  for (;;) {
+    const id = `${prefix}-${s}-${Math.floor(Math.random() * 900 + 100)}`
+    if (!taken?.has(id)) return taken?.add(id), id
+  }
 }
 
 /**
@@ -44,7 +47,7 @@ async function _recordPayment(p: PaymentInput) {
   const { contracts } = await store().readAll()
   const c = contracts.find((x) => x.id === p.contractId)
   if (!c) throw new Error("계약을 찾을 수 없습니다.")
-  await store().append("payments", [newId("P"), c.id, c.roomId, p.month, p.amount, p.date, p.method || "계좌이체", p.memo || "", seoulNow().stamp])
+  await store().append("payments", [[newId("P"), c.id, c.roomId, p.month, p.amount, p.date, p.method || "계좌이체", p.memo || "", seoulNow().stamp]])
 }
 
 async function _deletePayment(id: string) {
@@ -77,7 +80,7 @@ async function _saveContract(c: ContractInput) {
     await store().updateCells("contracts", hit.row, hit.id, "호실ID", [...values, hit.status, c.memo])
     return
   }
-  await store().append("contracts", [newId("C"), ...values, "진행", c.memo, seoulNow().stamp])
+  await store().append("contracts", [[newId("C"), ...values, "진행", c.memo, seoulNow().stamp]])
 }
 
 async function _endContract(id: string, end: string) {
@@ -108,15 +111,17 @@ async function _saveBuilding(b: BuildingInput) {
   const code = b.code.trim().toUpperCase()
   if (!BUILDING_CODE.test(code)) throw new Error("건물 코드는 영문 대문자·숫자 1~6자입니다. 예: CC, SH")
   if (buildings.some((x) => x.id === code)) throw new Error(`건물 코드 ${code} 가 이미 있습니다.`)
-  await store().append("buildings", [code, name, b.address.trim(), b.memo.trim()])
+  await store().append("buildings", [[code, name, b.address.trim(), b.memo.trim()]])
 }
 
 async function _deleteBuilding(id: string) {
-  const { buildings, rooms } = await store().readAll()
+  const { buildings, rooms, expenses, fixedCosts } = await store().readAll()
   const hit = buildings.find((x) => x.id === id)
   if (!hit) throw new Error("건물을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
   const n = rooms.filter((r) => r.buildingId === id).length
   if (n) throw new Error(`호실이 ${n}개 있어 삭제할 수 없습니다. 호실을 먼저 삭제하세요.`)
+  if (expenses.some((e) => e.buildingId === id) || fixedCosts.some((f) => f.buildingId === id))
+    throw new Error("지출·정기 지출 기록이 있는 건물은 삭제할 수 없습니다.")
   await store().deleteRow("buildings", hit.row, hit.id)
 }
 
@@ -144,7 +149,7 @@ async function _saveRoom(r: RoomInput) {
   if (!buildings.some((b) => b.id === r.buildingId)) throw new Error("건물을 선택하세요.")
   const id = `${r.buildingId}-${no}`
   if (rooms.some((x) => x.id === id || (x.buildingId === r.buildingId && x.no === no))) throw new Error(`${no}호가 이미 있습니다.`)
-  await store().append("rooms", [id, r.buildingId, no, r.floor, area, memo])
+  await store().append("rooms", [[id, r.buildingId, no, r.floor, area, memo]])
 }
 
 async function _deleteRoom(id: string) {
@@ -156,6 +161,112 @@ async function _deleteRoom(id: string) {
   await store().deleteRow("rooms", hit.row, hit.id)
 }
 
+/* ───────── 보증금 ───────── */
+
+const DEPOSIT_KINDS = ["계약금", "잔금", "반환"]
+
+async function _recordDeposit(d: DepositInput) {
+  if (!DEPOSIT_KINDS.includes(d.kind)) throw new Error("구분은 계약금·잔금·반환 중 하나입니다.")
+  if (!(d.amount > 0)) throw new Error("금액을 확인하세요.")
+  if (!DATE.test(d.date)) throw new Error("날짜를 확인하세요.")
+  const { contracts, deposits } = await store().readAll()
+  const c = contracts.find((x) => x.id === d.contractId)
+  if (!c) throw new Error("계약을 찾을 수 없습니다.")
+  const mine = deposits.filter((x) => x.contractId === c.id)
+  const received = mine.filter((x) => x.kind !== "반환").reduce((a, x) => a + x.amount, 0)
+  const returned = mine.filter((x) => x.kind === "반환").reduce((a, x) => a + x.amount, 0)
+  if (d.kind === "반환") {
+    if (d.amount > received - returned) throw new Error(`돌려줄 보증금(${(received - returned).toLocaleString("ko-KR")}원)보다 많습니다.`)
+  } else if (received + d.amount > c.deposit) {
+    throw new Error(`약정 보증금 ${c.deposit.toLocaleString("ko-KR")}원을 넘습니다. 남은 금액은 ${Math.max(0, c.deposit - received).toLocaleString("ko-KR")}원입니다.`)
+  }
+  await store().append("deposits", [[newId("D"), c.id, c.roomId, d.kind, d.amount, d.date, d.method || "계좌이체", d.memo.trim(), seoulNow().stamp]])
+}
+
+async function _deleteDeposit(id: string) {
+  const { deposits } = await store().readAll()
+  const hit = deposits.find((x) => x.id === id)
+  if (!hit) throw new Error("보증금 기록을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
+  await store().deleteRow("deposits", hit.row, hit.id)
+}
+
+/* ───────── 지출 ───────── */
+
+function checkExpense(e: Pick<ExpenseInput, "month" | "item" | "amount" | "date">) {
+  if (!MONTH.test(e.month)) throw new Error("귀속월 형식은 YYYY-MM 입니다.")
+  if (!e.item.trim()) throw new Error("항목을 입력하세요.")
+  if (!(e.amount > 0)) throw new Error("금액을 확인하세요.")
+  if (!DATE.test(e.date)) throw new Error("지출일을 확인하세요.")
+}
+
+async function _saveExpense(e: ExpenseInput) {
+  checkExpense(e)
+  const { buildings, expenses } = await store().readAll()
+  if (!buildings.some((b) => b.id === e.buildingId)) throw new Error("건물을 선택하세요.")
+  const values = [e.buildingId, e.month, e.item.trim(), e.amount, e.date, e.memo.trim()]
+  if (e.id) {
+    const hit = expenses.find((x) => x.id === e.id)
+    if (!hit) throw new Error("지출 기록을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
+    await store().updateCells("expenses", hit.row, hit.id, "건물ID", values)
+    return
+  }
+  await store().append("expenses", [[newId("E"), ...values, "", seoulNow().stamp]])
+}
+
+async function _deleteExpense(id: string) {
+  const { expenses } = await store().readAll()
+  const hit = expenses.find((x) => x.id === id)
+  if (!hit) throw new Error("지출 기록을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
+  await store().deleteRow("expenses", hit.row, hit.id)
+}
+
+async function _saveFixedCost(f: FixedCostInput) {
+  const item = f.item.trim()
+  if (!item) throw new Error("항목 이름을 입력하세요.")
+  if (!(f.amount >= 0)) throw new Error("기본 금액을 확인하세요.")
+  const { buildings, fixedCosts } = await store().readAll()
+  if (f.id) {
+    const hit = fixedCosts.find((x) => x.id === f.id)
+    if (!hit) throw new Error("정기 항목을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
+    if (fixedCosts.some((x) => x.buildingId === hit.buildingId && x.item === item && x.id !== hit.id)) throw new Error(`「${item}」 항목이 이미 있습니다.`)
+    await store().updateCells("fixedCosts", hit.row, hit.id, "항목", [item, f.amount, f.memo.trim()])
+    return
+  }
+  if (!buildings.some((b) => b.id === f.buildingId)) throw new Error("건물을 선택하세요.")
+  if (fixedCosts.some((x) => x.buildingId === f.buildingId && x.item === item)) throw new Error(`「${item}」 항목이 이미 있습니다.`)
+  await store().append("fixedCosts", [[newId("FX"), f.buildingId, item, f.amount, f.memo.trim()]])
+}
+
+async function _deleteFixedCost(id: string) {
+  const { fixedCosts } = await store().readAll()
+  const hit = fixedCosts.find((x) => x.id === id)
+  if (!hit) throw new Error("정기 항목을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
+  // 이미 기록한 지출은 항목 이름을 그대로 갖고 있으므로 남겨둔다
+  await store().deleteRow("fixedCosts", hit.row, hit.id)
+}
+
+/** 이번 달 정기 지출 한꺼번에 기록. 이미 기록된 항목은 건너뛴다(두 번 눌러도 중복되지 않음) */
+async function _recordFixedRun(run: FixedRunInput): Promise<number> {
+  if (!MONTH.test(run.month)) throw new Error("귀속월 형식은 YYYY-MM 입니다.")
+  if (!DATE.test(run.date)) throw new Error("지출일을 확인하세요.")
+  if (!run.items.length) throw new Error("기록할 항목을 선택하세요.")
+  const { fixedCosts, expenses } = await store().readAll()
+  const done = new Set(expenses.filter((e) => e.month === run.month && e.fixedId).map((e) => e.fixedId))
+  const taken = new Set(expenses.map((e) => e.id))
+  const stamp = seoulNow().stamp
+  const rows: (string | number)[][] = []
+  for (const it of run.items) {
+    const f = fixedCosts.find((x) => x.id === it.fixedId && x.buildingId === run.buildingId)
+    if (!f) throw new Error("정기 항목을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
+    if (done.has(f.id)) continue
+    if (!(it.amount > 0)) throw new Error(`「${f.item}」 금액을 확인하세요.`)
+    rows.push([newId("E", taken), f.buildingId, run.month, f.item, it.amount, run.date, "", f.id, stamp])
+  }
+  if (!rows.length) throw new Error("선택한 항목은 이미 모두 기록되어 있습니다.")
+  await store().append("expenses", rows)
+  return rows.length
+}
+
 export const recordPayment = exclusive(_recordPayment)
 export const deletePayment = exclusive(_deletePayment)
 export const saveContract = exclusive(_saveContract)
@@ -164,3 +275,10 @@ export const saveBuilding = exclusive(_saveBuilding)
 export const deleteBuilding = exclusive(_deleteBuilding)
 export const saveRoom = exclusive(_saveRoom)
 export const deleteRoom = exclusive(_deleteRoom)
+export const recordDeposit = exclusive(_recordDeposit)
+export const deleteDeposit = exclusive(_deleteDeposit)
+export const saveExpense = exclusive(_saveExpense)
+export const deleteExpense = exclusive(_deleteExpense)
+export const saveFixedCost = exclusive(_saveFixedCost)
+export const deleteFixedCost = exclusive(_deleteFixedCost)
+export const recordFixedRun = (run: FixedRunInput) => store().transaction(() => _recordFixedRun(run))

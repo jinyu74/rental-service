@@ -9,6 +9,17 @@ import { useShell } from "./shell"
 import { DashboardView } from "./dashboard-view"
 import { UnitsView } from "./units-view"
 import { PaymentsView } from "./payments-view"
+import { ExpensesView } from "./expenses-view"
+import {
+  DeleteDepositDialog,
+  DeleteExpenseDialog,
+  DeleteFixedDialog,
+  DepositDialog,
+  ExpenseDialog,
+  FixedItemDialog,
+  FixedListDialog,
+  FixedRunDialog,
+} from "./finance-dialogs"
 import { RoomDetail } from "./room-detail"
 import {
   BuildingDialog,
@@ -23,7 +34,7 @@ import {
 } from "./dialogs"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 
-export type View = "dashboard" | "units" | "payments"
+export type View = "dashboard" | "units" | "payments" | "expenses"
 
 export type DialogState =
   | { kind: "pay"; contractId?: string }
@@ -35,6 +46,14 @@ export type DialogState =
   | { kind: "deleteBuilding"; id: string }
   | { kind: "room"; id?: string; buildingId?: string }
   | { kind: "deleteRoom"; id: string }
+  | { kind: "deposit"; contractId: string; refund?: boolean }
+  | { kind: "deleteDeposit"; id: string }
+  | { kind: "expense"; id?: string; buildingId?: string }
+  | { kind: "deleteExpense"; id: string }
+  | { kind: "fixedRun"; buildingId: string }
+  | { kind: "fixedList"; buildingId: string }
+  | { kind: "fixedItem"; id?: string; buildingId: string }
+  | { kind: "deleteFixed"; id: string }
   | null
 
 interface RentCtx {
@@ -124,6 +143,7 @@ export function RentApp({ view, data }: { view: View; data: AppData }) {
   let body: ReactNode
   if (view === "units") body = <UnitsView />
   else if (view === "payments") body = <PaymentsView />
+  else if (view === "expenses") body = <ExpensesView />
   else body = <DashboardView />
 
   return (
@@ -155,6 +175,16 @@ export function RentApp({ view, data }: { view: View; data: AppData }) {
       {dialog?.kind === "deleteBuilding" && <DeleteBuildingDialog id={dialog.id} onClose={closeDialog} />}
       {dialog?.kind === "room" && <RoomDialog id={dialog.id} buildingId={dialog.buildingId} onClose={closeDialog} />}
       {dialog?.kind === "deleteRoom" && <DeleteRoomDialog id={dialog.id} onClose={closeDialog} />}
+      {dialog?.kind === "deposit" && <DepositDialog contractId={dialog.contractId} refund={dialog.refund} onClose={closeDialog} />}
+      {dialog?.kind === "deleteDeposit" && <DeleteDepositDialog id={dialog.id} onClose={closeDialog} />}
+      {dialog?.kind === "expense" && <ExpenseDialog id={dialog.id} buildingId={dialog.buildingId} onClose={closeDialog} />}
+      {dialog?.kind === "deleteExpense" && <DeleteExpenseDialog id={dialog.id} onClose={closeDialog} />}
+      {dialog?.kind === "fixedRun" && <FixedRunDialog buildingId={dialog.buildingId} onClose={closeDialog} />}
+      {dialog?.kind === "fixedList" && <FixedListDialog buildingId={dialog.buildingId} onClose={closeDialog} />}
+      {dialog?.kind === "fixedItem" && (
+        <FixedItemDialog key={dialog.id ?? "new"} id={dialog.id} buildingId={dialog.buildingId} onClose={closeDialog} />
+      )}
+      {dialog?.kind === "deleteFixed" && <DeleteFixedDialog id={dialog.id} onClose={closeDialog} />}
     </Ctx.Provider>
   )
 }

@@ -1,11 +1,13 @@
 "use client"
 
+import { useMemo } from "react"
 import { ExternalLink, MessageSquare, Plus } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 import { roomName, statusLabel, type RoomView } from "@/lib/billing"
+import { depositAlerts, depositReturnsDue, monthFinance, monthlyFinance } from "@/lib/finance"
 import { dotDate, ddayText, man, md, monthNum, todayLabel, won } from "@/lib/format"
 import { Empty, Kpi, MonthSwitcher, PageHeader, Pill, TONE, type Tone } from "./bits"
 import { useRent } from "./rent-app"
@@ -16,6 +18,15 @@ export function DashboardView() {
   const { data, M, month, setMonth, openRoom, openDialog } = useRent()
   const { k } = M
   const mm = monthNum(month)
+  const F = monthFinance(data, month, k.billed)
+  const months = useMemo(() => monthlyFinance(data, month), [data, month])
+  const depAlerts = depositAlerts(data)
+  const depReturns = depositReturnsDue(data)
+  const roomOf = new Map(M.rooms.map((r) => [r.id, r]))
+  const nameOf = (roomId: string) => {
+    const r = roomOf.get(roomId)
+    return r ? roomName(r) : roomId
+  }
 
   return (
     <>
@@ -26,15 +37,53 @@ export function DashboardView() {
         </Button>
       </PageHeader>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label={`${mm}월 청구액`} value={won(k.billed)} sub={`월세 ${k.monthlyN}실 · 전세(관리비) ${k.jeonseN}실`} />
         <Kpi label="수납 완료" value={won(k.paid)} sub={`수납률 ${k.rate}% · ${k.paidN}실`} tone="primary" progress={k.rate} />
+        <Kpi label={`${mm}월 지출`} value={won(F.expense)} sub={`정기 ${man(F.fixedExpense)} · 기타 ${man(F.otherExpense)}`} tone="bad" />
+        <Kpi label="순수익" value={won(F.net)} sub={`수납 − 지출 · 예상 ${won(F.expectedNet)}`} tone={F.net < 0 ? "bad" : "primary"} />
         <Kpi label="미수금" value={won(k.unpaid)} sub={`${k.unpaidN}실 납부일 경과`} tone="bad" />
         <Kpi label="납부 예정" value={won(k.due)} sub={`${k.dueN}실 · 납부일 전`} />
-        <div className="col-span-2 lg:col-span-1">
-          <Kpi label="입주율" value={`${k.occ}%`} sub={`공실 ${k.total - k.occN}실 / 전체 ${k.total}실`} />
-        </div>
+        <Kpi label="입주율" value={`${k.occ}%`} sub={`공실 ${k.total - k.occN}실 / 전체 ${k.total}실`} />
+        <Kpi label="보증금 확인" value={`${depAlerts.length + depReturns.length}건`}
+          sub={`미입금 ${depAlerts.length} · 반환 대기 ${depReturns.length}`} tone={depAlerts.length ? "bad" : undefined} />
       </div>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold">월별 수입·지출</CardTitle>
+          <p className="text-sm text-muted-foreground">최근 6개월 · 청구월 기준 · 순수익 = 수납 − 지출 (보증금 제외)</p>
+        </CardHeader>
+        <CardContent>
+          <table className="num w-full text-sm">
+            <thead>
+              <tr className="border-b text-xs text-muted-foreground">
+                <th className="py-2 text-left font-medium">월</th>
+                <th className="hidden py-2 text-right font-medium sm:table-cell">청구</th>
+                <th className="py-2 text-right font-medium">수납</th>
+                <th className="py-2 text-right font-medium">지출</th>
+                <th className="py-2 text-right font-medium">순수익</th>
+              </tr>
+            </thead>
+            <tbody>
+              {months.map((r) => (
+                <tr key={r.month} className={cn("border-b last:border-0", r.month === month && "bg-accent/50 font-semibold")}>
+                  <td className="py-2 pl-1 text-left">
+                    <button type="button" className="rounded hover:underline" onClick={() => setMonth(r.month)}>
+                      {monthNum(r.month)}월
+                    </button>
+                  </td>
+                  <td className="hidden py-2 text-right sm:table-cell">{r.billed.toLocaleString("ko-KR")}</td>
+                  <td className="py-2 text-right">{r.income.toLocaleString("ko-KR")}</td>
+                  <td className="py-2 text-right text-bad">{r.expense ? `−${r.expense.toLocaleString("ko-KR")}` : "0"}</td>
+                  <td className={cn("py-2 pr-1 text-right font-semibold", r.net < 0 ? "text-bad" : "text-primary")}>{r.net.toLocaleString("ko-KR")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-2 text-right text-xs text-muted-foreground">단위: 원</p>
+        </CardContent>
+      </Card>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className="space-y-4" aria-labelledby="board">
@@ -63,6 +112,7 @@ export function DashboardView() {
                   <p className="num mt-1.5 text-xs text-muted-foreground">
                     수납 {won(B.paid)} / 청구 {won(B.billed)}
                   </p>
+                  <BuildingNet buildingId={B.building.id} />
                 </div>
                 {B.floors.map((F) => (
                   <div key={F.floor} className="flex gap-2 md:gap-3">
@@ -124,6 +174,23 @@ export function DashboardView() {
               />
             ))}
           </SideList>
+          <SideList title="보증금 확인" hint="입주 전후 미입금·퇴실 후 반환" tone="partial" count={depAlerts.length + depReturns.length}
+            empty="확인할 보증금이 없습니다.">
+            {depAlerts.map((d) => (
+              <Row key={d.contract.id} onClick={() => openRoom(d.contract.roomId)} title={`${nameOf(d.contract.roomId)} · ${d.contract.tenant}`}
+                sub={<span className={d.dday <= 7 ? "text-bad" : undefined}>
+                  {d.dday > 0 ? `입주 D-${d.dday}` : d.dday === 0 ? "오늘 입주" : `입주 ${-d.dday}일 지남`} · 남은 {won(d.remaining)}
+                </span>}
+                right={<Button size="sm" variant="outline" onClick={() => openDialog({ kind: "deposit", contractId: d.contract.id })}>입금</Button>}
+              />
+            ))}
+            {depReturns.map((d) => (
+              <Row key={d.contract.id} onClick={() => openRoom(d.contract.roomId)} title={`${nameOf(d.contract.roomId)} · ${d.contract.tenant}`}
+                sub={`${dotDate(d.contract.end)} 퇴실 · 반환 대기 ${won(d.held)}`}
+                right={<Button size="sm" variant="outline" onClick={() => openDialog({ kind: "deposit", contractId: d.contract.id, refund: true })}>반환</Button>}
+              />
+            ))}
+          </SideList>
           <SideList title="계약 만료·갱신" hint="90일 이내·만료" tone="late" count={M.expiring.length} empty="90일 안에 끝나는 계약이 없습니다.">
             {M.expiring.map(({ room: r, dday }) => (
               <Row key={r.id} onClick={() => openRoom(r.id)} title={`${roomName(r)} · ${r.current!.tenant}`}
@@ -138,7 +205,7 @@ export function DashboardView() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
               {data.source === "sheets" ? (
-                <p>모든 데이터는 연결된 스프레드시트의 「건물·호실·계약·수납내역」 탭에 저장됩니다. 시트에서 직접 고친 내용은 새로고침하면 반영됩니다.</p>
+                <p>모든 데이터는 연결된 스프레드시트의 「건물·호실·계약·수납내역·보증금내역·지출내역·정기지출」 탭에 저장됩니다. 시트에서 직접 고친 내용은 새로고침하면 반영됩니다.</p>
               ) : (
                 <p>지금은 미리보기용 가짜 데이터입니다. 환경변수로 구글 시트를 연결하면 실제 데이터로 바뀝니다(README 참고).</p>
               )}
@@ -152,6 +219,16 @@ export function DashboardView() {
         </aside>
       </div>
     </>
+  )
+}
+
+function BuildingNet({ buildingId }: { buildingId: string }) {
+  const { data, month } = useRent()
+  const f = monthFinance(data, month, 0, buildingId)
+  return (
+    <p className="num text-xs text-muted-foreground">
+      지출 {won(f.expense)} · 순수익 <span className={cn("font-semibold", f.net < 0 ? "text-bad" : "text-foreground")}>{won(f.net)}</span>
+    </p>
   )
 }
 
