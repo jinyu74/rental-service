@@ -139,8 +139,8 @@ export function ExpenseDialog({ id, buildingId: preset, onClose }: { id?: string
       submitLabel="저장"
       onSubmit={() => run(() => saveExpenseAction({ id: editing?.id, buildingId, month: m, item, amount: amount || 0, date, memo }))}
     >
-      <Field label="건물" htmlFor="ex-b">
-        <NativeSelect id="ex-b" className="w-full" value={buildingId} onChange={(e) => setBuildingId(e.target.value)}>
+      <Field label={editing?.fixedId ? "건물 (정기 지출은 변경 불가)" : "건물"} htmlFor="ex-b">
+        <NativeSelect id="ex-b" className="w-full" value={buildingId} disabled={!!editing?.fixedId} onChange={(e) => setBuildingId(e.target.value)}>
           {data.buildings.map((b) => (
             <NativeSelectOption key={b.id} value={b.id}>
               {b.name}
@@ -379,4 +379,3 @@ export function DeleteFixedDialog({ id, onClose }: { id: string; onClose: () => 
       note="앞으로 정기 지출 목록에서 빠집니다. 이미 기록한 지출은 그대로 남습니다." action={() => deleteFixedCostAction(id)} onClose={onClose} />
   )
 }
-

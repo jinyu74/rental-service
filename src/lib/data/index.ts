@@ -187,6 +187,13 @@ async function _deleteDeposit(id: string) {
   const { deposits } = await store().readAll()
   const hit = deposits.find((x) => x.id === id)
   if (!hit) throw new Error("보증금 기록을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
+  if (hit.kind !== "반환") {
+    // 입금 기록을 지워도 「돌려준 돈 ≤ 받은 돈」 이 유지돼야 한다
+    const rest = deposits.filter((x) => x.contractId === hit.contractId && x.id !== hit.id)
+    const received = rest.filter((x) => x.kind !== "반환").reduce((a, x) => a + x.amount, 0)
+    const returned = rest.filter((x) => x.kind === "반환").reduce((a, x) => a + x.amount, 0)
+    if (returned > received) throw new Error("이 입금을 지우면 반환액이 입금액보다 많아집니다. 반환 기록을 먼저 고치거나 삭제하세요.")
+  }
   await store().deleteRow("deposits", hit.row, hit.id)
 }
 
@@ -203,13 +210,17 @@ async function _saveExpense(e: ExpenseInput) {
   checkExpense(e)
   const { buildings, expenses } = await store().readAll()
   if (!buildings.some((b) => b.id === e.buildingId)) throw new Error("건물을 선택하세요.")
-  const values = [e.buildingId, e.month, e.item.trim(), e.amount, e.date, e.memo.trim()]
   if (e.id) {
     const hit = expenses.find((x) => x.id === e.id)
     if (!hit) throw new Error("지출 기록을 찾을 수 없습니다. 새로고침 후 다시 시도하세요.")
-    await store().updateCells("expenses", hit.row, hit.id, "건물ID", values)
+    // 정기 지출은 정기 항목의 건물에 묶여 있고, 같은 항목은 한 달에 한 번만 기록된다
+    const buildingId = hit.fixedId ? hit.buildingId : e.buildingId
+    if (hit.fixedId && expenses.some((x) => x.id !== hit.id && x.fixedId === hit.fixedId && x.month === e.month))
+      throw new Error(`${e.month} 에 이미 같은 정기 항목 지출이 있습니다.`)
+    await store().updateCells("expenses", hit.row, hit.id, "건물ID", [buildingId, e.month, e.item.trim(), e.amount, e.date, e.memo.trim()])
     return
   }
+  const values = [e.buildingId, e.month, e.item.trim(), e.amount, e.date, e.memo.trim()]
   await store().append("expenses", [[newId("E"), ...values, "", seoulNow().stamp]])
 }
 
@@ -261,6 +272,7 @@ async function _recordFixedRun(run: FixedRunInput): Promise<number> {
     if (done.has(f.id)) continue
     if (!(it.amount > 0)) throw new Error(`「${f.item}」 금액을 확인하세요.`)
     rows.push([newId("E", taken), f.buildingId, run.month, f.item, it.amount, run.date, "", f.id, stamp])
+    done.add(f.id) // 한 요청 안에 같은 항목이 반복돼도 한 번만
   }
   if (!rows.length) throw new Error("선택한 항목은 이미 모두 기록되어 있습니다.")
   await store().append("expenses", rows)
