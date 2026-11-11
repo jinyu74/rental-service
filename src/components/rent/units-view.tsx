@@ -8,13 +8,12 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/utils"
-import { billOf, isAlert, roomName, statusLabel, type RoomView } from "@/lib/billing"
+import { billOf, isAlert, roomName, statusLabel, toneOf, type RoomView } from "@/lib/billing"
 import { daysBetween, ddayText, dotDate, man, monthNum, won } from "@/lib/format"
-import { Empty, MonthSwitcher, PageHeader, Pill, TypeBadge, type Tone } from "./bits"
+import { Empty, MonthSwitcher, PageHeader, Pill, TypeBadge } from "./bits"
 import { RoomDetail } from "./room-detail"
 import { useRent } from "./rent-app"
 
-const toneOf = (r: RoomView): Tone => (r.bill ? r.bill.st : "vacant")
 
 function Chips({ label, value, onChange, items }: {
   label: string
@@ -225,7 +224,7 @@ export function UnitsView() {
                   </span>
                   {c && (
                     <span className="num mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>매월 {c.payDay}일 · {c.type === "전세" ? "관리비만" : "임대료+관리비"}</span>
+                      <span>매월 {c.payDay}일 {c.payMode} · {c.type === "전세" ? "관리비만" : "임대료+관리비"}</span>
                       <span className={cn("font-semibold", dd <= 90 && "text-warn")}>{dd < 0 ? ddayText(dd) : `만료 ${ddayText(dd)}`}</span>
                     </span>
                   )}

@@ -1,5 +1,7 @@
 export type ContractType = "월세" | "전세"
 export type ContractStatus = "진행" | "종료"
+/** 선불: 입주일에 먼저 받고 한 달 산다. 후불: 한 달 살고 나서 받는다 */
+export type PayMode = "선불" | "후불"
 
 export interface Building {
   id: string
@@ -29,6 +31,7 @@ export interface Contract {
   rent: number
   fee: number
   payDay: number
+  payMode: PayMode
   start: string // YYYY-MM-DD
   end: string // YYYY-MM-DD
   status: ContractStatus
@@ -150,6 +153,7 @@ export interface ContractInput {
   rent: number
   fee: number
   payDay: number
+  payMode: PayMode
   start: string
   end: string
   memo: string
