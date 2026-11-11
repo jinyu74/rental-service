@@ -6,13 +6,12 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
-import { roomName, statusLabel, type RoomView } from "@/lib/billing"
+import { roomName, statusLabel, toneOf } from "@/lib/billing"
 import { depositAlerts, depositReturnsDue, monthFinance, monthlyFinance } from "@/lib/finance"
 import { dotDate, ddayText, man, md, monthNum, todayLabel, won } from "@/lib/format"
 import { Empty, Kpi, MonthSwitcher, PageHeader, Pill, TONE, type Tone } from "./bits"
 import { useRent } from "./rent-app"
 
-const toneOf = (r: RoomView): Tone => (r.bill ? r.bill.st : "vacant")
 
 export function DashboardView() {
   const { data, M, month, setMonth, openRoom, openDialog } = useRent()

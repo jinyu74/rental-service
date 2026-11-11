@@ -25,7 +25,7 @@ function seed(): Grid {
     brokers: [SHEETS.brokers.headers.slice()],
   }
   const names = ["김민준", "이서연", "박지호", "최유진", "정하늘", "강도윤", "윤서아", "임준서", "한지민", "오세훈", "서지우", "신예린", "조현우", "배수빈", "문태양", "장예준", "홍다은", "유시우", "노하린", "권도현", "송민서", "안지후", "류채원", "전우진", "고은채", "남건우", "황서윤", "차민재", "표하은"]
-  const vacant = ["CC-203", "SH-205", "SH-404"]
+  const vacant = ["CC-203", "SH-205", "SH-404"] // SH-205 는 아래에서 이번 달 후불 입주
   const jeonse = ["CC-103", "CC-204", "CC-303", "SH-103", "SH-202", "SH-303", "SH-401"]
   defaultRooms()
     .filter((r) => !vacant.includes(r.id))
@@ -57,6 +57,10 @@ function seed(): Grid {
   // 다음 달 입주 예정 계약 하나 (계약금만 입금)
   const ns = new Date(today.getFullYear(), today.getMonth() + 1, 1)
   g.contracts.push(["C-NEW", "SH-404", "신입주", "010-0000-9999", "월세", 10000000, 550000, 70000, 1, ymd(ns), ymd(new Date(ns.getFullYear() + 2, ns.getMonth(), 0)), "진행", "", ""])
+  // 이번 달 입주한 후불 계약 (첫 납부는 다음 달)
+  const ps = new Date(today.getFullYear(), today.getMonth(), Math.max(1, today.getDate() - 5))
+  g.contracts.push(["C-POST", "SH-205", "후불입주", "010-0000-8888", "월세", 10000000, 550000, 70000, ps.getDate(), ymd(ps), ymd(new Date(ps.getFullYear() + 1, ps.getMonth(), ps.getDate() - 1)), "진행", "", "", "", "", "", "후불"])
+  g.deposits.push(["D-POST-1", "C-POST", "SH-205", "잔금", 10000000, ymd(ps), "계좌이체", "", ""])
   g.deposits.push(["D-NEW-1", "C-NEW", "SH-404", "계약금", 1000000, ymd(new Date(today.getFullYear(), today.getMonth(), Math.max(1, today.getDate() - 3))), "계좌이체", "", ""])
 
   // 정기 지출 항목과 최근 4개월 지출
@@ -81,6 +85,9 @@ function seed(): Grid {
   g.contracts.slice(1).forEach((row, i) => {
     if (i % 5 === 1) row.push("한빛공인중개사", 400000, "BK-1")
     else if (i % 5 === 2) row.push("시흥온누리부동산", 550000, "BK-2")
+    // 몇 곳은 후불 (나머지는 빈칸 = 선불)
+    else if (i % 6 === 3) row.push("", "", "")
+    if (i % 6 === 3) row.push("후불")
   })
   // 자주 쓰는 지출 (배관수리는 금액이 매번 달라 0)
   g.quickCosts.push(["Q-CC-1", "CC", "소모품", 30000, "전구 교체"], ["Q-CC-2", "CC", "수선·하자보수", 0, ""], ["Q-SH-1", "SH", "소방 점검", 120000, "분기 점검"])

@@ -68,6 +68,7 @@ export const mapContract = (r: Row): Contract => ({
   rent: num(r["월임대료"]),
   fee: num(r["관리비"]),
   payDay: num(r["납부일"]) || 1,
+  payMode: str(r["납부방식"]) === "후불" ? "후불" : "선불",
   start: normDate(r["시작일"]),
   end: normDate(r["종료일"]),
   status: str(r["상태"]) === "종료" ? "종료" : "진행",

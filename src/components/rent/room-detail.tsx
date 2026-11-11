@@ -5,7 +5,7 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
-import { BILL_LABEL, billOf, roomName, statusLabel, type RoomView } from "@/lib/billing"
+import { BILL_LABEL, billOf, billsIn, firstDue, roomName, statusLabel, toneOf, type RoomView } from "@/lib/billing"
 import { addMonth, daysBetween, dotDate, md, monthEnd, monthNum, won } from "@/lib/format"
 import { DEPOSIT_LABEL, depositOf, type DepositStatus } from "@/lib/finance"
 import type { Contract } from "@/lib/types"
@@ -64,7 +64,7 @@ function KV({ k, v, strong }: { k: string; v: React.ReactNode; strong?: boolean 
 export function RoomDetail({ room: r, hideTitle }: { room: RoomView; hideTitle?: boolean }) {
   const { data, M, month, openDialog } = useRent()
   const c = r.current
-  const tone: Tone = r.bill ? r.bill.st : "vacant"
+  const tone: Tone = toneOf(r)
 
   const head = (
     <div className="flex items-start justify-between gap-3">
@@ -107,7 +107,9 @@ export function RoomDetail({ room: r, hideTitle }: { room: RoomView; hideTitle?:
   const total = Math.max(1, daysBetween(c.start, c.end))
   const prog = Math.max(0, Math.min(100, Math.round((daysBetween(c.start, data.today) / total) * 100)))
   const bill = r.billing?.id === c.id && r.bill ? r.bill : M.statusFor(c, month)
-  const alert = bill.st === "unpaid" || bill.st === "partial"
+  // 후불 첫 달처럼 이번 청구월에 받을 돈이 없는 달
+  const noBill = !billsIn(c, month)
+  const alert = !noBill && (bill.st === "unpaid" || bill.st === "partial")
 
   const months = Array.from({ length: 6 }, (_, i) => addMonth(month, -i))
   const pays = data.payments
@@ -118,10 +120,25 @@ export function RoomDetail({ room: r, hideTitle }: { room: RoomView; hideTitle?:
     <div className="space-y-5 py-5">
       {head}
 
+      {noBill ? (
+        <div className="rounded-xl border p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-muted-foreground">
+              {monthNum(month)}월 청구 없음 · 매월 {c.payDay}일 {c.payMode}
+            </span>
+            <Pill tone="vacant">청구 없음</Pill>
+          </div>
+          <p className="mt-1 text-sm">
+            {c.payMode === "후불" && firstDue(c) > monthEnd(month)
+              ? `후불 계약이라 한 달 살고 나서 받습니다. 첫 납부일 ${dotDate(firstDue(c))}`
+              : "이 달은 계약 기간 밖이라 청구하지 않습니다."}
+          </p>
+        </div>
+      ) : (
       <div className={cn("rounded-xl border p-4", alert && "border-red-300 bg-red-50/40")}>
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-muted-foreground">
-            {monthNum(month)}월 청구 · 매월 {c.payDay}일
+            {monthNum(month)}월 청구 · 매월 {c.payDay}일 {c.payMode}
           </span>
           <Pill tone={bill.st}>{BILL_LABEL[bill.st]}</Pill>
         </div>
@@ -130,12 +147,16 @@ export function RoomDetail({ room: r, hideTitle }: { room: RoomView; hideTitle?:
           {c.type === "전세" ? `관리비 ${won(c.fee)} (전세)` : `임대료 ${won(c.rent)} + 관리비 ${won(c.fee)}`}
           {bill.paid ? ` · 입금 ${won(bill.paid)}` : ""}
         </div>
+        <div className="num text-xs text-muted-foreground">
+          {md(bill.from)}~{md(bill.to)} 사용분 · 납부일 {md(bill.dueDate)}
+        </div>
         {bill.outstanding > 0 && (
           <Button className="mt-3 w-full" size="lg" onClick={() => openDialog({ kind: "pay", contractId: c.id })}>
             <Plus /> 수납 기록 ({won(bill.outstanding)})
           </Button>
         )}
       </div>
+      )}
 
       <Section title="임차인">
         <div className="flex items-center justify-between">
@@ -163,6 +184,7 @@ export function RoomDetail({ room: r, hideTitle }: { room: RoomView; hideTitle?:
           <KV k="보증금" v={won(c.deposit)} />
           {c.type !== "전세" && <KV k="월 임대료" v={won(c.rent)} />}
           <KV k="월 관리비" v={won(c.fee)} />
+          <KV k="납부" v={`매월 ${c.payDay}일 ${c.payMode} · 첫 납부 ${dotDate(firstDue(c))}`} />
           <KV k="매월 청구액" v={won(billOf(c))} strong />
         </div>
         <BrokerSection c={c} room={r} />
@@ -192,11 +214,13 @@ export function RoomDetail({ room: r, hideTitle }: { room: RoomView; hideTitle?:
       <Section title="최근 6개월 수납">
         <div className="divide-y">
           {months.map((m) => {
-            if (c.start > monthEnd(m) || (c.status === "종료" && c.end < m + "-01"))
+            if (!billsIn(c, m))
               return (
                 <div key={m} className="flex items-center gap-3 py-2 text-sm">
                   <span className="w-8 font-semibold">{monthNum(m)}월</span>
-                  <span className="text-muted-foreground">계약 기간 아님</span>
+                  <span className="text-muted-foreground">
+                    {c.payMode === "후불" && c.start.slice(0, 7) === m ? "후불 · 다음 달부터 청구" : "청구 없음"}
+                  </span>
                 </div>
               )
             const s = M.statusFor(c, m)

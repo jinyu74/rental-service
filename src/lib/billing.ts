@@ -1,5 +1,5 @@
 import type { AppData, Building, Contract, Room } from "./types"
-import { daysBetween, monthEnd, pad } from "./format"
+import { addMonth, daysBetween, md, monthEnd, pad, parseDate, ymd } from "./format"
 
 export type BillStatus = "paid" | "due" | "unpaid" | "partial"
 
@@ -10,6 +10,9 @@ export interface Bill {
   dueDate: string
   outstanding: number
   overdue: number
+  /** 이 청구가 대신하는 사용 기간 (선불: 납부일부터 한 달, 후불: 직전 납부일부터 한 달) */
+  from: string
+  to: string
 }
 
 export interface RoomView extends Room {
@@ -28,12 +31,44 @@ export interface RoomView extends Room {
 export const billOf = (c: Pick<Contract, "type" | "rent" | "fee">) =>
   c.type === "전세" ? c.fee : c.rent + c.fee
 
+/** m 월 납부일 (말일보다 큰 납부일은 말일) */
+export const dueDateOf = (c: Pick<Contract, "payDay">, m: string) =>
+  `${m}-${pad(Math.min(c.payDay, Number(monthEnd(m).slice(8))))}`
+
+/**
+ * 청구월 m 에 이 계약을 청구하는가.
+ * 선불: 입주한 달부터 매달 그 달 납부일에 받는다(앞으로 한 달 치).
+ * 후불: 한 달 살고 나서 받으므로 선불보다 한 달씩 늦다(입주한 다음 달부터, 퇴실한 다음 달 정산까지).
+ * 진행 중 계약은 종료일이 지나도(묵시적 갱신) 퇴실 처리 전까지 계속 청구
+ */
+export function billsIn(c: Contract, m: string) {
+  const u = c.payMode === "후불" ? addMonth(m, -1) : m
+  return c.start <= monthEnd(u) && (c.status === "진행" || c.end >= u + "-01")
+}
+
+/** 첫 납부일 */
+export const firstDue = (c: Pick<Contract, "start" | "payDay" | "payMode">) => dueDateOf(c, addMonth(c.start.slice(0, 7), c.payMode === "후불" ? 1 : 0))
+
+const dayBefore = (s: string) => {
+  const d = parseDate(s)
+  d.setDate(d.getDate() - 1)
+  return ymd(d)
+}
+
+/** 청구월 m 이 대신하는 사용 기간. 계약 시작·(퇴실한 계약의) 종료일 밖은 잘라낸다 */
+export function periodOf(c: Contract, m: string) {
+  const pre = c.payMode !== "후불"
+  let from = dueDateOf(c, pre ? m : addMonth(m, -1))
+  let to = dayBefore(dueDateOf(c, pre ? addMonth(m, 1) : m))
+  if (from < c.start) from = c.start
+  if (c.status === "종료" && to > c.end) to = c.end
+  return { from, to }
+}
+
 export const isAlert = (r: RoomView) => r.bill?.st === "unpaid" || r.bill?.st === "partial"
 
 export function compute(data: AppData, month: string) {
   const today = data.today
-  const mStart = month + "-01"
-  const mEnd = monthEnd(month)
   const bOrder = new Map(data.buildings.map((b, i) => [b.id, i]))
   const bMap = new Map(data.buildings.map((b) => [b.id, b]))
 
@@ -52,8 +87,7 @@ export function compute(data: AppData, month: string) {
   function statusFor(c: Contract, m: string): Bill {
     const billed = billOf(c)
     const paid = payBy.get(c.id + "|" + m) ?? 0
-    const me = monthEnd(m)
-    const dueDate = `${m}-${pad(Math.min(c.payDay, Number(me.slice(8))))}`
+    const dueDate = dueDateOf(c, m)
     let st: BillStatus
     if (billed <= 0 || paid >= billed) st = "paid"
     else if (today > dueDate) st = paid > 0 ? "partial" : "unpaid"
@@ -65,14 +99,14 @@ export function compute(data: AppData, month: string) {
       dueDate,
       outstanding: Math.max(0, billed - paid),
       overdue: st === "unpaid" || st === "partial" ? daysBetween(dueDate, today) : 0,
+      ...periodOf(c, m),
     }
   }
 
   const rooms: RoomView[] = data.rooms
     .map((r) => {
       const list = (byRoom.get(r.id) ?? []).slice().sort((a, b) => b.start.localeCompare(a.start))
-      // 진행 중 계약은 종료일이 지나도(묵시적 갱신) 퇴실 처리 전까지 계속 청구
-      const billing = list.find((c) => c.start <= mEnd && (c.status === "진행" || c.end >= mStart)) ?? null
+      const billing = list.find((c) => billsIn(c, month)) ?? null
       const current =
         list.find((c) => c.status === "진행" && c.start <= today) ?? list.find((c) => c.status === "진행") ?? null
       const building = bMap.get(r.buildingId) ?? { id: r.buildingId, name: r.buildingId, address: "", memo: "", row: 0 }
@@ -150,13 +184,16 @@ export function compute(data: AppData, month: string) {
 
 export type Computed = ReturnType<typeof compute>
 
+/** 화면 색: 청구가 없어도 입주해 있으면(후불 첫 달) 납부 예정으로 본다 */
+export const toneOf = (r: RoomView): BillStatus | "vacant" => (r.bill ? r.bill.st : r.occupied ? "due" : "vacant")
+
 export const roomName = (r: RoomView) => `${r.bname} ${r.no}호`
 
 export function statusLabel(r: RoomView) {
   const b = r.bill
-  if (!b) return "공실"
+  if (!b) return r.occupied && r.current ? `${md(firstDue(r.current))} 첫 납부` : "공실"
   if (b.st === "paid") return r.billing!.type === "전세" ? "관리비 수납" : "수납완료"
-  if (b.st === "due") return `${Number(b.dueDate.slice(5, 7))}/${Number(b.dueDate.slice(8))} 예정`
+  if (b.st === "due") return `${md(b.dueDate)} 예정`
   if (b.st === "unpaid") return `미납 ${b.overdue}일`
   return "일부 미납"
 }
