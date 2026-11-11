@@ -150,13 +150,13 @@ export function DashboardView() {
         </section>
 
         <aside className="space-y-4">
-          <SideList title="미납" tone="unpaid" count={M.unpaid.length} empty="미납 호실이 없습니다.">
-            {M.unpaid.map((r) => (
-              <Row key={r.id} onClick={() => openRoom(r.id)} title={`${roomName(r)} · ${r.billing!.tenant}`}
-                sub={<span className="text-bad">{won(r.bill!.outstanding)} · 납부일 {r.billing!.payDay}일 · {r.bill!.overdue}일 경과</span>}
+          <SideList title="미납" tone="unpaid" count={M.unpaid.length} empty="미납이 없습니다.">
+            {M.unpaid.map(({ room: r, contract: c, bill }) => (
+              <Row key={c.id} onClick={() => openRoom(r.id)} title={`${roomName(r)} · ${c.tenant}${c.id !== r.billing?.id ? " (정산)" : ""}`}
+                sub={<span className="text-bad">{won(bill.outstanding)} · 납부일 {c.payDay}일 · {bill.overdue}일 경과</span>}
                 right={
-                  r.billing!.phone ? (
-                    <a href={`sms:${r.billing!.phone}`} aria-label={`${r.billing!.tenant}님에게 문자`}
+                  c.phone ? (
+                    <a href={`sms:${c.phone}`} aria-label={`${c.tenant}님에게 문자`}
                       className={cn(buttonVariants({ variant: "destructive", size: "icon" }))}>
                       <MessageSquare />
                     </a>
@@ -166,10 +166,10 @@ export function DashboardView() {
             ))}
           </SideList>
           <SideList title={`${mm}월 납부 예정`} tone="due" count={M.due.length} empty="남은 납부 예정이 없습니다.">
-            {M.due.map((r) => (
-              <Row key={r.id} onClick={() => openRoom(r.id)} title={`${roomName(r)} · ${r.billing!.tenant}`}
-                sub={`${md(r.bill!.dueDate)} · ${r.billing!.type === "전세" ? "관리비" : "임대료+관리비"}`}
-                right={<span className="num text-sm font-semibold whitespace-nowrap">{won(r.bill!.outstanding)}</span>}
+            {M.due.map(({ room: r, contract: c, bill }) => (
+              <Row key={c.id} onClick={() => openRoom(r.id)} title={`${roomName(r)} · ${c.tenant}${c.id !== r.billing?.id ? " (정산)" : ""}`}
+                sub={`${md(bill.dueDate)} · ${c.type === "전세" ? "관리비" : "임대료+관리비"}`}
+                right={<span className="num text-sm font-semibold whitespace-nowrap">{won(bill.outstanding)}</span>}
               />
             ))}
           </SideList>

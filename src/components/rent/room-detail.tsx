@@ -5,7 +5,7 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
-import { BILL_LABEL, billOf, billsIn, firstDue, roomName, statusLabel, toneOf, type RoomView } from "@/lib/billing"
+import { BILL_LABEL, billOf, billsIn, billsOf, firstDue, roomName, statusLabel, toneOf, type RoomView } from "@/lib/billing"
 import { addMonth, daysBetween, dotDate, md, monthEnd, monthNum, won } from "@/lib/format"
 import { DEPOSIT_LABEL, depositOf, type DepositStatus } from "@/lib/finance"
 import type { Contract } from "@/lib/types"
@@ -61,6 +61,40 @@ function KV({ k, v, strong }: { k: string; v: React.ReactNode; strong?: boolean 
   )
 }
 
+/** 이번 청구월에 함께 청구되는 이전 계약(퇴실 정산 등) */
+function SettleCards({ room: r }: { room: RoomView }) {
+  const { month, openDialog } = useRent()
+  const list = billsOf(r).filter((e) => e.contract.id !== r.current?.id)
+  if (!list.length) return null
+  return (
+    <>
+      {list.map(({ contract: c, bill }) => {
+        const bad = bill.st === "unpaid" || bill.st === "partial"
+        return (
+          <div key={c.id} className={cn("rounded-xl border p-4", bad && "border-red-300 bg-red-50/40")}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-muted-foreground">
+                {monthNum(month)}월 이전 계약 정산 · {c.tenant} · {c.payMode}
+              </span>
+              <Pill tone={bill.st}>{BILL_LABEL[bill.st]}</Pill>
+            </div>
+            <div className="num mt-1 text-xl font-bold">{won(bill.billed)}</div>
+            <div className="num text-xs text-muted-foreground">
+              {md(bill.from)}~{md(bill.to)} 사용분 · 납부일 {md(bill.dueDate)}
+              {bill.paid ? ` · 입금 ${won(bill.paid)}` : ""}
+            </div>
+            {bill.outstanding > 0 && (
+              <Button className="mt-3 w-full" variant="outline" onClick={() => openDialog({ kind: "pay", contractId: c.id })}>
+                <Plus /> 정산 수납 기록 ({won(bill.outstanding)})
+              </Button>
+            )}
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
 export function RoomDetail({ room: r, hideTitle }: { room: RoomView; hideTitle?: boolean }) {
   const { data, M, month, openDialog } = useRent()
   const c = r.current
@@ -86,6 +120,7 @@ export function RoomDetail({ room: r, hideTitle }: { room: RoomView; hideTitle?:
     return (
       <div className="space-y-5 py-5">
         {head}
+        <SettleCards room={r} />
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed bg-muted/40 px-4 py-8 text-center">
           <span className="font-semibold">현재 공실입니다</span>
           {last && (
@@ -119,6 +154,7 @@ export function RoomDetail({ room: r, hideTitle }: { room: RoomView; hideTitle?:
   return (
     <div className="space-y-5 py-5">
       {head}
+      <SettleCards room={r} />
 
       {noBill ? (
         <div className="rounded-xl border p-4">
