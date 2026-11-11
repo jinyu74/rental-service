@@ -22,9 +22,9 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/utils"
-import { roomName } from "@/lib/billing"
+import { firstDue, roomName } from "@/lib/billing"
 import { digits, dotDate, monthNum, parseDate, won, ymd } from "@/lib/format"
-import type { ActionResult, ContractType } from "@/lib/types"
+import type { ActionResult, ContractType, PayMode } from "@/lib/types"
 import { useRent } from "./rent-app"
 
 /* ───────── 공통: 휴대폰은 아래 시트, PC 는 가운데 대화상자 ───────── */
@@ -220,11 +220,12 @@ export function useSubmit(onClose: () => void) {
 
 export function PayDialog({ contractId, onClose }: { contractId?: string; onClose: () => void }) {
   const { data, M, month } = useRent()
-  const billable = M.rooms.filter((r) => r.billing)
-  let target = contractId ? billable.find((r) => r.billing!.id === contractId) : undefined
-  target ??= billable.find((r) => r.bill!.st === "unpaid" || r.bill!.st === "partial") ?? billable.find((r) => r.bill!.st === "due") ?? billable[0]
+  // 이번 달 청구가 있는 모든 계약 (이전 계약 정산 포함)
+  const entries = M.entries
+  let target = contractId ? entries.find((e) => e.contract.id === contractId) : undefined
+  target ??= entries.find((e) => e.bill.st === "unpaid" || e.bill.st === "partial") ?? entries.find((e) => e.bill.st === "due") ?? entries[0]
   const fallback = contractId ? data.contracts.find((c) => c.id === contractId) : undefined
-  const initial = target?.billing ?? fallback
+  const initial = target?.contract ?? fallback
 
   const [cid, setCid] = useState(initial?.id ?? "")
   const [m, setM] = useState(month)
@@ -240,9 +241,10 @@ export function PayDialog({ contractId, onClose }: { contractId?: string; onClos
   const [memo, setMemo] = useState("")
   const { pending, error, run } = useSubmit(onClose)
 
-  const options = billable.some((r) => r.billing!.id === cid)
-    ? billable
-    : [...billable, ...(fallback ? M.rooms.filter((r) => r.id === fallback.roomId) : [])]
+  const fbRoom = fallback && M.rooms.find((r) => r.id === fallback.roomId)
+  const options = entries.some((e) => e.contract.id === cid) || !fallback || !fbRoom
+    ? entries
+    : [...entries, { contract: fallback, bill: null, room: fbRoom }]
 
   return (
     <FormShell
@@ -267,12 +269,11 @@ export function PayDialog({ contractId, onClose }: { contractId?: string; onClos
           }}
         >
           {!initial && <NativeSelectOption value="">{monthNum(month)}월에 청구할 계약이 없습니다</NativeSelectOption>}
-          {options.map((r) => {
-            const c = r.billing ?? r.current!
-            const out = r.billing ? r.bill!.outstanding : 0
+          {options.map(({ room: r, contract: c, bill }) => {
+            const out = bill ? bill.outstanding : 0
             return (
               <NativeSelectOption key={c.id} value={c.id}>
-                {roomName(r)} · {c.tenant} {out ? `(남은 ${won(out)})` : "(완료)"}
+                {roomName(r)} · {c.tenant}{r.billing && c.id !== r.billing.id ? " (정산)" : ""} {out ? `(남은 ${won(out)})` : "(완료)"}
               </NativeSelectOption>
             )
           })}
@@ -319,6 +320,7 @@ export function ContractDialog({ id, roomId: presetRoom, onClose }: { id?: strin
   const [rent, setRent] = useState<number | "">(base?.rent || "")
   const [fee, setFee] = useState<number | "">(base?.fee ?? "")
   const [payDay, setPayDay] = useState(String(base?.payDay ?? 5))
+  const [payMode, setPayMode] = useState<PayMode>(base?.payMode ?? "선불")
   const [start, setStart] = useState(start0)
   const [end, setEnd] = useState(editing?.end ?? ymd(new Date(s0.getFullYear() + 2, s0.getMonth(), s0.getDate() - 1)))
   const [memo, setMemo] = useState(editing?.memo ?? "")
@@ -352,6 +354,7 @@ export function ContractDialog({ id, roomId: presetRoom, onClose }: { id?: strin
             rent: type === "전세" ? 0 : rent || 0,
             fee: fee || 0,
             payDay: Number(payDay) || 1,
+            payMode,
             start,
             end,
             memo,
@@ -403,6 +406,17 @@ export function ContractDialog({ id, roomId: presetRoom, onClose }: { id?: strin
       <Field label="납부일 (매월)" htmlFor="ct-day">
         <Input id="ct-day" type="number" min={1} max={31} className="h-10" value={payDay} onChange={(e) => setPayDay(e.target.value)} />
       </Field>
+      <div className="grid gap-1.5 sm:col-span-2">
+        <span className="text-xs font-medium text-muted-foreground">납부 방식</span>
+        <Seg label="납부 방식" value={payMode} onChange={setPayMode}
+          items={[{ v: "선불", label: "선불 (먼저 받고 한 달)" }, { v: "후불", label: "후불 (한 달 살고 받음)" }]} />
+        {DATE_RE.test(start) && (
+          <p className="num text-xs text-muted-foreground">
+            첫 납부일 {dotDate(firstDue({ start, payDay: Math.min(31, Math.max(1, Number(payDay) || 1)), payMode }))}
+            {payMode === "선불" ? " · 입주하는 달부터 매달 납부일에 다음 한 달 치를 받습니다." : " · 입주 다음 달부터 매달 납부일에 지난 한 달 치를 받습니다."}
+          </p>
+        )}
+      </div>
       <Field label="시작일" htmlFor="ct-s">
         <Input id="ct-s" type="date" className="h-10" value={start} onChange={(e) => setStart(e.target.value)} />
       </Field>
@@ -447,6 +461,7 @@ export function ContractDialog({ id, roomId: presetRoom, onClose }: { id?: strin
 }
 
 const NEW_BROKER = "__new"
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 /* ───────── 계약 종료 ───────── */
 

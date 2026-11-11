@@ -63,6 +63,9 @@ async function _saveContract(c: ContractInput) {
   if (c.type !== "월세" && c.type !== "전세") throw new Error("유형은 월세 또는 전세입니다.")
   if (!DATE.test(c.start) || !DATE.test(c.end)) throw new Error("계약 기간을 확인하세요.")
   if (c.end < c.start) throw new Error("종료일이 시작일보다 빠릅니다.")
+  // 납부방식을 보내지 않는 예전 화면(배포 직후 열려 있던 탭)은 선불로 저장
+  const payMode = c.payMode ?? "선불"
+  if (payMode !== "선불" && payMode !== "후불") throw new Error("납부 방식은 선불 또는 후불입니다.")
   const payDay = Math.min(31, Math.max(1, Math.round(c.payDay) || 1))
   const rent = c.type === "전세" ? 0 : c.rent
 
@@ -90,15 +93,16 @@ async function _saveContract(c: ContractInput) {
   }
   if (brokerFee > 0 && !broker) throw new Error("중개수수료가 있으면 중개소를 선택하세요.")
   const values = [c.roomId, c.tenant.trim(), c.phone.trim(), c.type, c.deposit, rent, c.fee, payDay, c.start, c.end]
-  const brokerValues = broker ? [broker.name, brokerFee, broker.id] : ["", 0, ""]
+  // 등록일시 뒤 열: 중개소·중개수수료·중개소ID·납부방식
+  const tail = [...(broker ? [broker.name, brokerFee, broker.id] : ["", 0, ""]), payMode]
   if (c.id) {
     const hit = contracts.find((x) => x.id === c.id)
     if (!hit) throw new Error("계약을 찾을 수 없습니다.")
-    // 등록일시 열은 건드리지 않고, 그 앞(호실ID~메모)과 뒤(중개 정보)를 한 번에 쓴다
-    await store().updateCells("contracts", hit.row, hit.id, "호실ID", [...values, hit.status, c.memo], [["중개소", brokerValues]])
+    // 등록일시 열은 건드리지 않고, 그 앞(호실ID~메모)과 뒤(중개 정보·납부방식)를 한 번에 쓴다
+    await store().updateCells("contracts", hit.row, hit.id, "호실ID", [...values, hit.status, c.memo], [["중개소", tail]])
     return
   }
-  await store().append("contracts", [[newId("C"), ...values, "진행", c.memo, seoulNow().stamp, ...brokerValues]])
+  await store().append("contracts", [[newId("C"), ...values, "진행", c.memo, seoulNow().stamp, ...tail]])
 }
 
 async function _endContract(id: string, end: string) {
