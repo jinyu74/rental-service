@@ -52,3 +52,4 @@ next-env.d.ts
 *.pfx
 # Netlify CLI 로컬 설정 (사이트 ID·토큰)
 .netlify
+*.log
