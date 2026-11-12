@@ -24,5 +24,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
+      - run: pnpm test
       # 비밀 값 없이 빌드 (구글 시트 변수가 없으면 미리보기 저장소로 빌드됨)
       - run: pnpm build

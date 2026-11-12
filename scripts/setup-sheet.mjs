@@ -1,7 +1,7 @@
 // 구글 시트 초기 설정: node scripts/setup-sheet.mjs   (pnpm setup-sheet)
 // - 「건물·호실·계약·수납내역·보증금내역·지출내역·정기지출·자주쓰는지출·중개소」 탭과 머리글을 만들고, 날짜·ID 열을 텍스트 형식으로 지정
 // - 유형(월세/전세)·상태(진행/종료)·보증금 구분(계약금/잔금/반환) 드롭다운 추가, 시간대를 Asia/Seoul 로 설정
-// - 건물·호실 탭이 비어 있으면 춘천 13실·시흥 19실(예시 호수)을 넣음
+// - 건물·호실 탭이 비어 있으면 Building A 13실·Building B 19실(예시 이름·호수)을 넣음
 // 이미 있는 데이터는 지우지 않습니다. 여러 번 실행해도 안전합니다.
 import { existsSync } from "node:fs"
 
@@ -40,8 +40,8 @@ const SHEETS = {
   quickCosts: { name: "자주쓰는지출", headers: ["빠른항목ID", "건물ID", "항목", "기본금액", "메모"], text: ["빠른항목ID", "건물ID"] },
 }
 const LAYOUT = [
-  ["CC", "춘천건물", { 1: 3, 2: 5, 3: 5 }],
-  ["SH", "시흥건물", { 1: 4, 2: 5, 3: 5, 4: 5 }],
+  ["A", "Building A", { 1: 3, 2: 5, 3: 5 }],
+  ["B", "Building B", { 1: 4, 2: 5, 3: 5, 4: 5 }],
 ]
 
 const b64url = (b) => Buffer.from(b).toString("base64url")

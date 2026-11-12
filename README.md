@@ -1,6 +1,6 @@
 # 임대장부 (Next.js)
 
-춘천건물(13실)·시흥건물(19실)의 계약과 월별 수납을 관리하는 웹앱입니다.
+여러 건물·호실의 임대 계약과 월별 수납을 관리하는 웹앱입니다.
 Next.js 16 · TypeScript · shadcn/ui(Base UI) · Tailwind CSS 4. 데이터는 구글 스프레드시트에 저장합니다.
 
 ## 화면
@@ -24,8 +24,14 @@ pnpm install
 pnpm dev           # http://localhost:3000
 ```
 
-구글 시트 환경변수가 없으면 메모리의 가짜 데이터로 동작합니다(서버 재시작 시 초기화).
+구글 시트 환경변수가 없으면 메모리의 가짜 데이터(Building A 13실 · Building B 19실, 임차인·연락처도 모두 가상)로 동작합니다(서버 재시작 시 초기화).
 개발 모드에서 `AUTH_PASSWORD` 가 없으면 로그인 없이 열립니다. 운영(`next start`, 배포)에서는 반드시 필요합니다.
+
+```bash
+pnpm test          # Vitest 단위 테스트 (청구·선불/후불·보증금·수입지출·시트 값 정규화)
+```
+
+CI(PR·develop 푸시)는 `pnpm lint` → `pnpm typecheck` → `pnpm test` → `pnpm build` 순서로 검사합니다.
 
 ## 구글 시트 연결
 
@@ -41,8 +47,8 @@ pnpm dev           # http://localhost:3000
    ```bash
    pnpm setup-sheet
    ```
-   호실 번호는 예시 배치(춘천 1층 3실·2~3층 각 5실 / 시흥 1층 4실·2~4층 각 5실)입니다.
-   실제와 다르면 계약을 넣기 전에 시트 「호실」 탭에서 호수·층을 고치세요.
+   건물·호실은 예시(Building A 1층 3실·2~3층 각 5실 / Building B 1층 4실·2~4층 각 5실)로 들어갑니다.
+   실제와 다르면 계약을 넣기 전에 시트 「건물」 탭의 건물명과 「호실」 탭의 호수·층을 고치세요.
 
 시트 탭 구성
 
@@ -79,9 +85,8 @@ Next.js 는 서버(서버 액션, 시트 API 호출)가 필요하므로 정적 �
 
 Netlify 배포 순서
 
-1. 이 `web` 폴더를 GitHub 비공개 저장소에 올립니다(`.env.local` 은 올라가지 않습니다).
+1. 이 저장소를 GitHub 비공개 저장소로 둡니다(`.env.local` 은 올라가지 않습니다).
 2. Netlify → **Add new site → Import an existing project** → 저장소 선택. 빌드 설정은 자동 감지됩니다(`pnpm-lock.yaml` 이 있으면 pnpm 으로 설치, 빌드 명령 `pnpm build`).
-   저장소 루트가 상위 폴더라면 **Base directory** 를 `web` 으로 지정합니다.
 3. **Site configuration → Environment variables** 에 `.env.local` 의 5개 값을 그대로 넣고 다시 배포합니다.
    `GOOGLE_PRIVATE_KEY` 는 `\n` 이 포함된 한 줄 그대로 붙여넣으면 됩니다.
 4. 나온 주소(`https://<이름>.netlify.app`)를 PC 즐겨찾기·휴대폰 홈 화면에 추가합니다.
@@ -117,6 +122,7 @@ src/
   app/actions.ts        서버 액션: 수납 기록/삭제, 계약 저장/종료, 새로고침
   proxy.ts              로그인 쿠키 확인 (Next 16 의 middleware)
   lib/billing.ts        청구·수납 상태 계산
+  lib/**/*.test.ts      Vitest 단위 테스트 (가상 데이터는 src/test/fixtures.ts)
   lib/data/             저장소: sheets-store(구글 시트 REST) / mock-store(가짜 데이터)
   components/rent/      화면 컴포넌트
   components/ui/        shadcn/ui 컴포넌트

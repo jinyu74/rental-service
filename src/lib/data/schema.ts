@@ -45,8 +45,8 @@ export type SheetKey = keyof typeof SHEETS
 
 /** 초기 호실 배치 (예시). 실제와 다르면 시트 「호실」 탭에서 수정 */
 export const DEFAULT_BUILDINGS = [
-  { id: "CC", name: "춘천건물", layout: { 1: 3, 2: 5, 3: 5 } as Record<number, number> },
-  { id: "SH", name: "시흥건물", layout: { 1: 4, 2: 5, 3: 5, 4: 5 } as Record<number, number> },
+  { id: "A", name: "Building A", layout: { 1: 3, 2: 5, 3: 5 } as Record<number, number> },
+  { id: "B", name: "Building B", layout: { 1: 4, 2: 5, 3: 5, 4: 5 } as Record<number, number> },
 ]
 
 export function defaultRooms() {
