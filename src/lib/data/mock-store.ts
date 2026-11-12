@@ -25,24 +25,24 @@ function seed(): Grid {
     brokers: [SHEETS.brokers.headers.slice()],
   }
   const names = ["김민준", "이서연", "박지호", "최유진", "정하늘", "강도윤", "윤서아", "임준서", "한지민", "오세훈", "서지우", "신예린", "조현우", "배수빈", "문태양", "장예준", "홍다은", "유시우", "노하린", "권도현", "송민서", "안지후", "류채원", "전우진", "고은채", "남건우", "황서윤", "차민재", "표하은"]
-  const vacant = ["CC-203", "SH-205", "SH-404"] // SH-205 는 아래에서 이번 달 후불 입주
-  const jeonse = ["CC-103", "CC-204", "CC-303", "SH-103", "SH-202", "SH-303", "SH-401"]
+  const vacant = ["A-203", "B-205", "B-404"] // B-205 는 아래에서 이번 달 후불 입주
+  const jeonse = ["A-103", "A-204", "A-303", "B-103", "B-202", "B-303", "B-401"]
   defaultRooms()
     .filter((r) => !vacant.includes(r.id))
     .forEach((r, i) => {
-      const cc = r.buildingId === "CC"
+      const isA = r.buildingId === "A"
       const j = jeonse.includes(r.id)
       const start = new Date(today.getFullYear() - 1, ((i * 5) % 12) - (i % 3 === 0 ? 10 : 0), 1)
       const end = new Date(start.getFullYear() + 2, start.getMonth(), 0)
       const c = {
         id: `C-${pad(i + 1)}`,
-        rent: j ? 0 : cc ? 450000 : 550000,
-        fee: cc ? 50000 : 70000,
+        rent: j ? 0 : isA ? 450000 : 550000,
+        fee: isA ? 50000 : 70000,
         payDay: [1, 5, 10, 15, 25][i % 5],
       }
       g.contracts.push([c.id, r.id, names[i], `010-0000-${1000 + i * 37}`, j ? "전세" : "월세",
-        j ? (cc ? 120000000 : 150000000) : cc ? 5000000 : 10000000, c.rent, c.fee, c.payDay, ymd(start), ymd(end), "진행", "", ""])
-      const dep = j ? (cc ? 120000000 : 150000000) : cc ? 5000000 : 10000000
+        j ? (isA ? 120000000 : 150000000) : isA ? 5000000 : 10000000, c.rent, c.fee, c.payDay, ymd(start), ymd(end), "진행", "", ""])
+      const dep = j ? (isA ? 120000000 : 150000000) : isA ? 5000000 : 10000000
       // 대부분 완납, 몇 곳은 계약금만 들어온 상태
       g.deposits.push([`D-${i}-1`, c.id, r.id, "계약금", dep / 10, ymd(new Date(start.getFullYear(), start.getMonth() - 1, 10)), "계좌이체", "", ""])
       if (i % 9 !== 4) g.deposits.push([`D-${i}-2`, c.id, r.id, "잔금", dep - dep / 10, ymd(start), "계좌이체", "", ""])
@@ -56,17 +56,17 @@ function seed(): Grid {
     })
   // 다음 달 입주 예정 계약 하나 (계약금만 입금)
   const ns = new Date(today.getFullYear(), today.getMonth() + 1, 1)
-  g.contracts.push(["C-NEW", "SH-404", "신입주", "010-0000-9999", "월세", 10000000, 550000, 70000, 1, ymd(ns), ymd(new Date(ns.getFullYear() + 2, ns.getMonth(), 0)), "진행", "", ""])
+  g.contracts.push(["C-NEW", "B-404", "신입주", "010-0000-9999", "월세", 10000000, 550000, 70000, 1, ymd(ns), ymd(new Date(ns.getFullYear() + 2, ns.getMonth(), 0)), "진행", "", ""])
   // 이번 달 입주한 후불 계약 (첫 납부는 다음 달)
   const ps = new Date(today.getFullYear(), today.getMonth(), Math.max(1, today.getDate() - 5))
-  g.contracts.push(["C-POST", "SH-205", "후불입주", "010-0000-8888", "월세", 10000000, 550000, 70000, ps.getDate(), ymd(ps), ymd(new Date(ps.getFullYear() + 1, ps.getMonth(), ps.getDate() - 1)), "진행", "", "", "", "", "", "후불"])
-  g.deposits.push(["D-POST-1", "C-POST", "SH-205", "잔금", 10000000, ymd(ps), "계좌이체", "", ""])
-  g.deposits.push(["D-NEW-1", "C-NEW", "SH-404", "계약금", 1000000, ymd(new Date(today.getFullYear(), today.getMonth(), Math.max(1, today.getDate() - 3))), "계좌이체", "", ""])
+  g.contracts.push(["C-POST", "B-205", "후불입주", "010-0000-8888", "월세", 10000000, 550000, 70000, ps.getDate(), ymd(ps), ymd(new Date(ps.getFullYear() + 1, ps.getMonth(), ps.getDate() - 1)), "진행", "", "", "", "", "", "후불"])
+  g.deposits.push(["D-POST-1", "C-POST", "B-205", "잔금", 10000000, ymd(ps), "계좌이체", "", ""])
+  g.deposits.push(["D-NEW-1", "C-NEW", "B-404", "계약금", 1000000, ymd(new Date(today.getFullYear(), today.getMonth(), Math.max(1, today.getDate() - 3))), "계좌이체", "", ""])
 
   // 정기 지출 항목과 최근 4개월 지출
   const fixed: [string, string, string, number][] = [
-    ["FX-CC-1", "CC", "공용전기", 85000], ["FX-CC-2", "CC", "청소", 150000], ["FX-CC-3", "CC", "인터넷+TV", 132000], ["FX-CC-4", "CC", "수도", 210000],
-    ["FX-SH-1", "SH", "공용전기", 120000], ["FX-SH-2", "SH", "청소", 200000], ["FX-SH-3", "SH", "인터넷+TV", 187000], ["FX-SH-4", "SH", "수도", 290000],
+    ["FX-A-1", "A", "공용전기", 85000], ["FX-A-2", "A", "청소", 150000], ["FX-A-3", "A", "인터넷+TV", 132000], ["FX-A-4", "A", "수도", 210000],
+    ["FX-B-1", "B", "공용전기", 120000], ["FX-B-2", "B", "청소", 200000], ["FX-B-3", "B", "인터넷+TV", 187000], ["FX-B-4", "B", "수도", 290000],
   ]
   for (const [id, b, item, amount] of fixed) g.fixedCosts.push([id, b, item, amount, ""])
   for (let back = 3; back >= 1; back--) {
@@ -78,19 +78,19 @@ function seed(): Grid {
     })
   }
   const lm = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-  g.expenses.push(["E-R1", "SH", ymd(lm).slice(0, 7), "수선·하자보수", 380000, ymd(new Date(lm.getFullYear(), lm.getMonth(), 14)), "302호 보일러 배관 누수 수리", "", ""])
-  g.expenses.push(["E-R2", "CC", ymd(today).slice(0, 7), "수선·하자보수", 95000, ymd(today), "공용 복도 전등 교체", "", ""])
+  g.expenses.push(["E-R1", "B", ymd(lm).slice(0, 7), "수선·하자보수", 380000, ymd(new Date(lm.getFullYear(), lm.getMonth(), 14)), "302호 보일러 배관 누수 수리", "", ""])
+  g.expenses.push(["E-R2", "A", ymd(today).slice(0, 7), "수선·하자보수", 95000, ymd(today), "공용 복도 전등 교체", "", ""])
   // 중개소 2곳, 일부 계약은 중개소를 통해 계약 (나머지는 예전 계약처럼 중개 정보 없음)
-  g.brokers.push(["BK-1", "한빛공인중개사", "033-000-1111", "춘천시 중앙로 1", ""], ["BK-2", "시흥온누리부동산", "031-000-2222", "", "소장 김OO"])
+  g.brokers.push(["BK-1", "한빛공인중개사", "033-000-1111", "중앙로 1", ""], ["BK-2", "온누리부동산", "031-000-2222", "", "소장 김OO"])
   g.contracts.slice(1).forEach((row, i) => {
     if (i % 5 === 1) row.push("한빛공인중개사", 400000, "BK-1")
-    else if (i % 5 === 2) row.push("시흥온누리부동산", 550000, "BK-2")
+    else if (i % 5 === 2) row.push("온누리부동산", 550000, "BK-2")
     // 몇 곳은 후불 (나머지는 빈칸 = 선불)
     else if (i % 6 === 3) row.push("", "", "")
     if (i % 6 === 3) row.push("후불")
   })
   // 자주 쓰는 지출 (배관수리는 금액이 매번 달라 0)
-  g.quickCosts.push(["Q-CC-1", "CC", "소모품", 30000, "전구 교체"], ["Q-CC-2", "CC", "수선·하자보수", 0, ""], ["Q-SH-1", "SH", "소방 점검", 120000, "분기 점검"])
+  g.quickCosts.push(["Q-A-1", "A", "소모품", 30000, "전구 교체"], ["Q-A-2", "A", "수선·하자보수", 0, ""], ["Q-B-1", "B", "소방 점검", 120000, "분기 점검"])
   return g
 }
 
