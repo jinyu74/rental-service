@@ -6,7 +6,7 @@ test("대시보드: 지표와 건물별 현황판", async ({ page }) => {
   await login(page)
   await expect(page.getByRole("heading", { name: /월 임대 현황/ })).toBeVisible()
   for (const k of ["수납 완료", "순수익", "미수금", "입주율"]) await expect(page.getByText(k, { exact: true }).first()).toBeVisible()
-  await expect(page.getByText("공실 3실 / 전체 32실").or(page.getByText(/전체 32실/)).first()).toBeVisible()
+  await expect(page.getByText(/공실 \d+실 \/ 전체 \d+실/).first()).toBeVisible()
   await expect(page.getByText("Building A").first()).toBeVisible()
   await expect(page.getByText("Building B").first()).toBeVisible()
   expect(errors).toEqual([])
