@@ -29,9 +29,15 @@ pnpm dev           # http://localhost:3000
 
 ```bash
 pnpm test          # Vitest 단위 테스트 (청구·선불/후불·보증금·수입지출·시트 값 정규화)
+
+# Playwright 브라우저 e2e (처음 한 번: pnpm exec playwright install chromium)
+pnpm build && pnpm test:e2e
 ```
 
-CI(PR·develop 푸시)는 `pnpm lint` → `pnpm typecheck` → `pnpm test` → `pnpm build` 순서로 검사합니다.
+e2e 는 빌드 결과를 3100 포트에 가짜 데이터로 띄워 로그인·호실 검색·계약 등록(후불)·수납 기록과 삭제·빠른 지출·휴대폰 화면을 실제로 조작합니다.
+구글 시트 변수를 빈 값으로 덮어써서 `.env.local` 이 있어도 실제 시트에는 연결되지 않으며, 각 테스트는 로그인 직후 「미리보기 데이터」 표시를 확인한 뒤에만 진행합니다.
+
+CI(PR·develop 푸시)는 `pnpm lint` → `pnpm typecheck` → `pnpm test` → `pnpm build` → `pnpm test:e2e` 순서로 검사합니다(e2e 가 실패하면 Playwright 보고서를 아티팩트로 올림).
 
 ## 구글 시트 연결
 
@@ -127,4 +133,5 @@ src/
   components/rent/      화면 컴포넌트
   components/ui/        shadcn/ui 컴포넌트
 scripts/setup-sheet.mjs 시트 초기 설정
+e2e/                    Playwright 브라우저 테스트 (설정 playwright.config.ts)
 ```
