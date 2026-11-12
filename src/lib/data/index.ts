@@ -161,7 +161,7 @@ async function _saveBuilding(b: BuildingInput) {
     return
   }
   const code = b.code.trim().toUpperCase()
-  if (!BUILDING_CODE.test(code)) throw new Error("건물 코드는 영문 대문자·숫자 1~6자입니다. 예: CC, SH")
+  if (!BUILDING_CODE.test(code)) throw new Error("건물 코드는 영문 대문자·숫자 1~6자입니다. 예: A, B2")
   if (buildings.some((x) => x.id === code)) throw new Error(`건물 코드 ${code} 가 이미 있습니다.`)
   await store().append("buildings", [[code, name, b.address.trim(), b.memo.trim()]])
 }

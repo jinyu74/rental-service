@@ -1,7 +1,7 @@
 // 구글 시트 초기 설정: node scripts/setup-sheet.mjs   (pnpm setup-sheet)
 // - 「건물·호실·계약·수납내역·보증금내역·지출내역·정기지출·자주쓰는지출·중개소」 탭과 머리글을 만들고, 날짜·ID 열을 텍스트 형식으로 지정
 // - 유형(월세/전세)·상태(진행/종료)·보증금 구분(계약금/잔금/반환) 드롭다운 추가, 시간대를 Asia/Seoul 로 설정
-// - 건물·호실 탭이 비어 있으면 춘천 13실·시흥 19실(예시 호수)을 넣음
+// - 건물·호실 탭이 모두 비어 있으면 Building A 13실·Building B 19실(예시 이름·호수)을 넣음
 // 이미 있는 데이터는 지우지 않습니다. 여러 번 실행해도 안전합니다.
 import { existsSync } from "node:fs"
 
@@ -40,8 +40,8 @@ const SHEETS = {
   quickCosts: { name: "자주쓰는지출", headers: ["빠른항목ID", "건물ID", "항목", "기본금액", "메모"], text: ["빠른항목ID", "건물ID"] },
 }
 const LAYOUT = [
-  ["CC", "춘천건물", { 1: 3, 2: 5, 3: 5 }],
-  ["SH", "시흥건물", { 1: 4, 2: 5, 3: 5, 4: 5 }],
+  ["A", "Building A", { 1: 3, 2: 5, 3: 5 }],
+  ["B", "Building B", { 1: 4, 2: 5, 3: 5, 4: 5 }],
 ]
 
 const b64url = (b) => Buffer.from(b).toString("base64url")
@@ -113,13 +113,14 @@ requests.push(list("유형", ["월세", "전세"]), list("상태", ["진행", "�
 await api(":batchUpdate", { method: "POST", body: JSON.stringify({ requests }) })
 console.log("✓ 머리글·텍스트 형식·드롭다운 설정")
 
-// 3) 건물·호실 기본값 (비어 있을 때만)
+// 3) 건물·호실 기본값 — 두 탭이 모두 비어 있을 때만 (한쪽만 있으면 예시 ID 가 기존 데이터와 어긋나므로 넣지 않음)
 const filled = async (name) => ((await api(`/values/${rng(name, "A2:A3")}`)).values ?? []).length > 0
-if (!(await filled("건물"))) {
+const [hasB, hasR] = [await filled("건물"), await filled("호실")]
+if (hasB !== hasR)
+  console.warn(`! 「${hasB ? "호실" : "건물"}」 탭만 비어 있어 예시를 넣지 않았습니다. 기존 「${hasB ? "건물" : "호실"}」 탭의 건물ID 에 맞춰 직접 채우세요.`)
+if (!hasB && !hasR) {
   await api(`/values/${rng("건물", "A2")}?valueInputOption=RAW`, { method: "PUT", body: JSON.stringify({ values: LAYOUT.map(([id, name]) => [id, name, "", ""]) }) })
   console.log("✓ 건물 2개 추가")
-}
-if (!(await filled("호실"))) {
   const rows = []
   for (const [b, , floors] of LAYOUT)
     for (const [f, n] of Object.entries(floors))

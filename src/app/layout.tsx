@@ -12,7 +12,7 @@ const plex = IBM_Plex_Sans_KR({
 
 export const metadata: Metadata = {
   title: "임대장부",
-  description: "춘천·시흥 건물 임대 계약과 월별 수납 관리",
+  description: "건물 임대 계약과 월별 수납 관리",
   robots: { index: false, follow: false },
   appleWebApp: { capable: true, title: "임대장부", statusBarStyle: "default" },
 }
