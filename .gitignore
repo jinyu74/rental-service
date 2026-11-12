@@ -53,3 +53,8 @@ next-env.d.ts
 # Netlify CLI 로컬 설정 (사이트 ID·토큰)
 .netlify
 *.log
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
